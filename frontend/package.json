@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "prettier": "3.9.10",
-    "typescript": "~5.9.3",
+    "typescript": "~7.0.2",
     "vue-tsc": "3.3.13"
   },
   "license": "MIT",
