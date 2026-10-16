@@ -11,6 +11,7 @@ const editable = computed(
   () =>
     !!session.value &&
     session.value.provider !== 'demo' &&
+    !session.value.readOnly &&
     providerOptions(session.value.provider).editing &&
     !activeQuery.value &&
     selectedTable.value?.kind === 'BASE TABLE',
@@ -386,7 +387,8 @@ async function cellSaved() {
       <main v-if="!session" class="welcome-main">
         <ConnectionForm
           :providers="providers"
-          :busy="connecting"
+          :busy="connecting || db.testing.value"
+          :test-connection="db.testConnection"
           :error="connectionError"
           :saved-connections="savedConnections"
           :saving-enabled="savingEnabled"
@@ -415,7 +417,8 @@ async function cellSaved() {
           <span class="table-subtitle"
             >{{ session.database }} / {{ selectedTable?.schema || 'Tables' }}</span
           >
-          <div v-if="session.provider !== 'demo'" class="mutation-toolbar">
+          <span v-if="session.readOnly" class="table-subtitle">Read only</span>
+          <div v-if="session.provider !== 'demo' && !session.readOnly" class="mutation-toolbar">
             <button
               v-if="editable"
               class="button secondary small"
@@ -673,7 +676,8 @@ async function cellSaved() {
         <AppIcon name="close" /></button
       ><ConnectionForm
         :providers="providers"
-        :busy="connecting"
+        :busy="connecting || db.testing.value"
+        :test-connection="db.testConnection"
         :error="connectionError"
         :saved-connections="savedConnections"
         :saving-enabled="savingEnabled"

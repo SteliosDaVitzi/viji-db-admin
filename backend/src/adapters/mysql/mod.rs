@@ -25,6 +25,15 @@ async fn connect_mode(input: &ConnectionInput, read_only: bool) -> AppResult<MyS
             MySqlSslMode::Disabled
         })
         .disable_statement_logging();
+    if let Some(pem) = &input.tls_ca {
+        options = options.ssl_ca_from_pem(pem.as_bytes().to_vec());
+    }
+    if let Some(pem) = &input.tls_cert {
+        options = options.ssl_client_cert_from_pem(pem.as_bytes());
+    }
+    if let Some(pem) = &input.tls_key {
+        options = options.ssl_client_key_from_pem(pem.as_bytes());
+    }
     if !input.database.is_empty() {
         options = options.database(&input.database);
     }

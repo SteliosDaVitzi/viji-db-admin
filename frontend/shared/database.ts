@@ -11,6 +11,10 @@ export interface ConnectionInput {
   password: string
   ssl: boolean
   allDatabases?: boolean
+  readOnly?: boolean
+  tlsCa?: string
+  tlsCert?: string
+  tlsKey?: string
   saveName?: string
 }
 export interface SavedConnection {
@@ -23,6 +27,7 @@ export interface Session {
   host: string
   expiresIn: number
   allDatabases: boolean
+  readOnly: boolean
 }
 export interface TableInfo {
   schema: string

@@ -559,14 +559,15 @@ kbd {
   flex-direction: column;
   align-items: center;
   justify-content: safe center;
-  padding: 55px 35px;
+  padding: clamp(20px, 4vh, 40px) clamp(20px, 4vw, 35px);
   min-width: 0;
   background: radial-gradient(ellipse at 50% 35%, #232a342e, transparent 65%);
 }
 .connection-form {
   width: 100%;
-  max-width: 420px;
+  max-width: 640px;
   flex-shrink: 0;
+  container-type: inline-size;
 }
 .connection-form .scope-toggle {
   margin-bottom: 8px;
@@ -769,6 +770,11 @@ kbd {
   margin-top: 7px;
 }
 .connection-form > label,
+.connection-fields > label,
+.connection-option > label,
+.connection-address > label,
+.connection-preferences > div > label,
+.connection-modal-form label,
 .form-row > label {
   display: flex;
   flex-direction: column;
@@ -779,7 +785,8 @@ kbd {
   min-width: 0;
 }
 .connection-form input:not([type='checkbox']),
-.connection-form select {
+.connection-form select,
+.connection-modal-form input:not([type='checkbox']) {
   height: 40px;
   background: var(--surface);
   color: var(--text);
@@ -831,6 +838,217 @@ kbd {
   padding: 12px 14px;
   font-size: 12px;
 }
+.connection-fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.connection-address,
+.connection-preferences {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+}
+.connection-address {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+}
+.connection-form .checkbox-label input,
+.connection-form .hint {
+  flex-shrink: 0;
+}
+.connection-form .connection-preferences .checkbox-label {
+  margin-bottom: 8px;
+}
+.connection-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  min-width: 0;
+}
+.connection-form .connection-option > .checkbox-label {
+  flex: 1;
+  margin: 0;
+}
+.help-tooltip {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.help-tooltip .hint {
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  padding: 0;
+}
+.help-tooltip-content {
+  position: absolute;
+  z-index: 10;
+  bottom: calc(100% + 8px);
+  right: 0;
+  width: min(280px, calc(100vw - 64px));
+  padding: 10px 12px;
+  border: 1px solid var(--raised);
+  border-radius: 6px;
+  background: var(--sidebar);
+  color: var(--text);
+  box-shadow: 0 6px 20px #0006;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.help-tooltip-content::after {
+  content: '';
+  position: absolute;
+  inset: 100% 0 auto;
+  height: 8px;
+}
+.connection-settings-button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 20px;
+  padding: 12px;
+  border: 1px solid var(--raised);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.connection-settings-button:hover {
+  background: var(--surface);
+}
+.connection-tls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.connection-tls > input {
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  margin: 0;
+}
+.connection-tls .connection-settings-button {
+  min-width: 0;
+  margin: 0;
+  text-align: left;
+}
+.connection-settings-button .tls-status {
+  margin-left: auto;
+  color: var(--muted);
+  font-weight: 400;
+}
+.connection-settings-modal {
+  width: min(540px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: clamp(18px, 4vw, 28px);
+  overflow: auto;
+  border: 1px solid var(--raised);
+  border-radius: 12px;
+  background: var(--sidebar);
+  color: var(--text);
+  box-shadow: 0 25px 100px #0009;
+}
+.connection-settings-modal::backdrop {
+  background: #080c12b8;
+  backdrop-filter: blur(5px);
+}
+.connection-modal-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.connection-modal-heading h2 {
+  font-size: 18px;
+}
+.connection-modal-form .checkbox-label {
+  flex-direction: row;
+  align-items: center;
+}
+.connection-modal-form .checkbox-label input {
+  flex-shrink: 0;
+}
+.connection-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+.password-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.password-field input {
+  min-width: 0;
+}
+.password-field button {
+  flex-shrink: 0;
+}
+.connection-actions {
+  display: flex;
+  gap: 10px;
+}
+.connection-actions > .secondary {
+  flex-shrink: 0;
+}
+.connection-feedback {
+  font-size: 12px;
+  line-height: 1.6;
+  margin-bottom: 16px;
+  overflow-wrap: anywhere;
+}
+.connection-feedback.failure {
+  color: var(--danger, #ff9494);
+}
+.tls-file {
+  margin-bottom: 16px;
+}
+.tls-file label {
+  margin-bottom: 4px;
+}
+.tls-file > span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.connection-form input[type='file'],
+.connection-modal-form input[type='file'] {
+  padding: 8px;
+  height: auto;
+  font-size: 11px;
+}
+.saved-connections input[type='search'] {
+  margin: 10px 0;
+}
+@container (max-width: 520px) {
+  .connection-address,
+  .connection-preferences {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
+@container (max-width: 380px) {
+  .connection-fields > .form-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .connection-actions {
+    flex-direction: column;
+  }
+}
 .header-branding {
   display: flex;
   align-items: center;
@@ -841,9 +1059,9 @@ kbd {
 .brand-attribution {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 6px;
   color: var(--muted);
-  font-size: 15px;
+  font-size: 12px;
   text-decoration: none;
 }
 
@@ -855,19 +1073,19 @@ kbd {
 .attribution-logo {
   display: inline-block;
   position: relative;
-  width: 31px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
   overflow: hidden;
   flex: none;
 }
 
 .attribution-logo img {
   position: absolute;
-  width: 49.46px;
-  height: 49.46px;
+  width: 31.91px;
+  height: 31.91px;
   max-width: none;
-  left: -10.26px;
-  top: -14px;
+  left: -6.62px;
+  top: -8.06px;
   filter: brightness(0) invert(1);
 }
 
@@ -1607,9 +1825,11 @@ kbd {
   color: var(--text);
   border-radius: 13px;
   box-shadow: 0 25px 100px #0009;
-  width: 490px;
+  width: 710px;
   max-width: calc(100vw - 30px);
-  padding: 39px 35px 30px;
+  max-height: calc(100dvh - 30px);
+  overflow: auto;
+  padding: 35px;
 }
 .connection-dialog::backdrop {
   background: #080c12b8;

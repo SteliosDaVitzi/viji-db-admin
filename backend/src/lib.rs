@@ -102,7 +102,14 @@ fn router_with_services(
         )
         .route(
             "/api/session",
-            post(connect).get(current_session).delete(disconnect),
+            post(connect)
+                .get(current_session)
+                .delete(disconnect)
+                .layer(DefaultBodyLimit::max(256 * 1024)),
+        )
+        .route(
+            "/api/connections/test",
+            post(test_connection).layer(DefaultBodyLimit::max(256 * 1024)),
         )
         .route("/api/tables", get(tables))
         .route("/api/databases", get(databases).post(select_database))
@@ -146,13 +153,18 @@ async fn database_settings(
         .try_acquire()
         .map_err(|_| AppError(ErrorKind::Busy, "Too many requests. Try again shortly."))?;
     let input = state.sessions.get(session_token(&headers))?;
-    Ok(Json(
-        state
-            .database
-            .resolve(&input.provider)?
-            .settings(&input)
-            .await?,
-    ))
+    let mut settings = state
+        .database
+        .resolve(&input.provider)?
+        .settings(&input)
+        .await?;
+    if input.read_only {
+        settings.can_edit = false;
+        for setting in &mut settings.settings {
+            setting["editable"] = false.into();
+        }
+    }
+    Ok(Json(settings))
 }
 
 async fn update_database_settings(
@@ -161,6 +173,7 @@ async fn update_database_settings(
     Json(request): Json<UpdateDatabaseSettings>,
 ) -> AppResult<StatusCode> {
     let input = state.sessions.get(session_token(&headers))?;
+    ensure_writable(&input)?;
     request.validate().map_err(invalid)?;
     if request.database != input.database {
         return Err(invalid(
@@ -180,7 +193,49 @@ async fn update_database_settings(
 }
 
 fn session_info(input: &ConnectionInput) -> serde_json::Value {
-    serde_json::json!({ "provider": input.provider, "database": if input.provider == "demo" { "sample_workspace" } else { &input.database }, "allDatabases": input.all_databases, "host": if input.provider == "demo" { "Sample data" } else { &input.host }, "expiresIn": sessions::TTL_SECONDS })
+    serde_json::json!({ "provider": input.provider, "database": if input.provider == "demo" { "sample_workspace" } else { &input.database }, "allDatabases": input.all_databases, "readOnly": input.read_only || input.provider == "demo", "host": if input.provider == "demo" { "Sample data" } else { &input.host }, "expiresIn": sessions::TTL_SECONDS })
+}
+fn ensure_writable(input: &ConnectionInput) -> AppResult<()> {
+    if input.read_only {
+        return Err(invalid(
+            "This connection is read only. Reconnect with read-only mode disabled to make changes.",
+        ));
+    }
+    Ok(())
+}
+
+async fn test_input(state: &AppState, input: &mut ConnectionInput) -> AppResult<()> {
+    input.validate().map_err(invalid)?;
+    let adapter = state.database.resolve(&input.provider)?;
+    if input.all_databases {
+        input.database = adapter
+            .maintenance_database()
+            .ok_or_else(|| invalid("Instance browsing is unavailable for this provider."))?
+            .into();
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(15), adapter.test(input))
+        .await
+        .map_err(|_| {
+            AppError(
+                ErrorKind::Timeout,
+                "Connection test timed out. Check the host, port, and TLS settings.",
+            )
+        })?
+}
+
+async fn test_connection(
+    State(state): State<Shared>,
+    Json(mut input): Json<ConnectionInput>,
+) -> AppResult<Json<serde_json::Value>> {
+    let _permit = state
+        .operations
+        .try_acquire()
+        .map_err(|_| AppError(ErrorKind::Busy, "Too many requests. Try again shortly."))?;
+    let started = std::time::Instant::now();
+    test_input(&state, &mut input).await?;
+    Ok(Json(
+        serde_json::json!({"ok": true, "elapsedMs": started.elapsed().as_millis()}),
+    ))
 }
 async fn current_session(
     State(state): State<Shared>,
@@ -207,15 +262,7 @@ async fn connect(
         .operations
         .try_acquire()
         .map_err(|_| AppError(ErrorKind::Busy, "Too many requests. Try again shortly."))?;
-    input.validate().map_err(invalid)?;
-    let adapter = state.database.resolve(&input.provider)?;
-    if input.all_databases {
-        input.database = adapter
-            .maintenance_database()
-            .ok_or_else(|| invalid("Instance browsing is unavailable for this provider."))?
-            .into();
-    }
-    adapter.test(&input).await?;
+    test_input(&state, &mut input).await?;
     let info = session_info(&input);
     let id = state.sessions.insert(input, session_token(&headers))?;
     let mut headers = HeaderMap::new();
@@ -405,6 +452,7 @@ async fn mutate(
     Json(request): Json<MutationRequest>,
 ) -> AppResult<Json<MutationResult>> {
     let input = state.sessions.get(session_token(&headers))?;
+    ensure_writable(&input)?;
     if request.confirmation != "APPLY" {
         return Err(invalid("Review the change and type APPLY to confirm."));
     }
@@ -431,6 +479,9 @@ mod tests {
     struct InstanceAdapter;
     #[async_trait::async_trait]
     impl DatabaseAdapter for InstanceAdapter {
+        async fn mutate(&self, _: &ConnectionInput, _: &Mutation) -> AppResult<MutationResult> {
+            Ok(MutationResult { affected_rows: 1 })
+        }
         fn maintenance_database(&self) -> Option<&'static str> {
             Some("postgres")
         }
@@ -449,7 +500,7 @@ mod tests {
                 database: input.database.clone(),
                 properties: serde_json::Map::new(),
                 settings: vec![],
-                can_edit: false,
+                can_edit: true,
             })
         }
         fn provider(&self) -> Provider {
@@ -523,6 +574,173 @@ mod tests {
             serde_json::from_slice(&bytes).unwrap_or_default(),
         )
     }
+    #[tokio::test]
+    async fn testing_preserves_sessions_and_read_only_survives_switching_and_vault() {
+        let vault = Arc::new(
+            adapters::vault::SqliteVault::open(":memory:", &[2; 32])
+                .await
+                .unwrap(),
+        );
+        let app = router_with_services(
+            false,
+            Some(vault),
+            DatabaseService::new(vec![Arc::new(InstanceAdapter)]),
+        );
+        let input = serde_json::json!({"provider":"postgres","host":"localhost","port":5432,"database":"app","username":"user","password":"private-password","ssl":true,"readOnly":true});
+        let (status, token, result) =
+            call(&app, "POST", "/api/connections/test", "", input.clone()).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(token, "", "Testing must not issue a session cookie");
+        assert_eq!(result["ok"], true);
+        assert!(result["elapsedMs"].is_number());
+        assert!(!result.to_string().contains("private-password"));
+        assert_eq!(
+            call(&app, "GET", "/api/session", "", serde_json::Value::Null)
+                .await
+                .0,
+            StatusCode::UNAUTHORIZED
+        );
+
+        let mut instance = input.clone();
+        instance["allDatabases"] = true.into();
+        let (status, token, session) = call(&app, "POST", "/api/session", "", instance).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(session["readOnly"], true);
+        for db in ["other", "unavailable"] {
+            let mut tested = input.clone();
+            tested["database"] = db.into();
+            let (status, returned_token, _) =
+                call(&app, "POST", "/api/connections/test", &token, tested).await;
+            assert_eq!(
+                status,
+                if db == "unavailable" {
+                    StatusCode::BAD_REQUEST
+                } else {
+                    StatusCode::OK
+                }
+            );
+            assert_eq!(returned_token, token);
+            assert_eq!(
+                call(&app, "GET", "/api/session", &token, serde_json::Value::Null)
+                    .await
+                    .2["database"],
+                "postgres"
+            );
+        }
+        assert_eq!(
+            call(
+                &app,
+                "POST",
+                "/api/connections",
+                &token,
+                serde_json::json!({"name":"Read only"})
+            )
+            .await
+            .0,
+            StatusCode::CREATED
+        );
+        let saved = call(
+            &app,
+            "GET",
+            "/api/connections",
+            &token,
+            serde_json::Value::Null,
+        )
+        .await
+        .2;
+        let id = saved["connections"][0]["id"].as_str().unwrap();
+        let (status, token, session) = call(
+            &app,
+            "POST",
+            &format!("/api/connections/{id}/connect"),
+            &token,
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(session["readOnly"], true);
+        let (status, token, session) = call(
+            &app,
+            "POST",
+            "/api/databases",
+            &token,
+            serde_json::json!({"database":"app\"db"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(session["readOnly"], true);
+        assert_eq!(
+            call(
+                &app,
+                "GET",
+                "/api/database-settings",
+                &token,
+                serde_json::Value::Null
+            )
+            .await
+            .2["canEdit"],
+            false
+        );
+        for (method, path, body) in [
+            (
+                "POST",
+                "/api/mutations",
+                serde_json::json!({"confirmation":"APPLY","mutation":{"action":"execute","sql":"DROP TABLE customers"}}),
+            ),
+            (
+                "PATCH",
+                "/api/database-settings",
+                serde_json::json!({"database":"app\"db","confirmation":"APPLY","changes":{"work_mem":{"value":"16MB","expected":null}}}),
+            ),
+        ] {
+            let (status, _, result) = call(&app, method, path, &token, body).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert!(result["message"].as_str().unwrap().contains("read only"));
+        }
+    }
+
+    #[tokio::test]
+    async fn tls_validation_is_bounded_and_rejects_unsupported_combinations() {
+        let app = router_with_services(
+            false,
+            None,
+            DatabaseService::new(vec![Arc::new(InstanceAdapter)]),
+        );
+        let base = serde_json::json!({"provider":"postgres","host":"localhost","port":5432,"database":"app","username":"user","password":"secret","ssl":true});
+        let cert = "-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----";
+        let key = "-----BEGIN PRIVATE KEY-----\nTEST\n-----END PRIVATE KEY-----";
+        for extra in [
+            serde_json::json!({"tlsCa":"not PEM"}),
+            serde_json::json!({"tlsCert":cert}),
+            serde_json::json!({"tlsKey":key}),
+            serde_json::json!({"tlsCa":cert,"ssl":false}),
+            serde_json::json!({"tlsCa":cert,"provider":"sqlserver"}),
+            serde_json::json!({"tlsCa":"x".repeat(32769)}),
+        ] {
+            let mut input = base.clone();
+            input
+                .as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            assert_eq!(
+                call(&app, "POST", "/api/connections/test", "", input)
+                    .await
+                    .0,
+                StatusCode::BAD_REQUEST
+            );
+        }
+        let mut input = base;
+        input["tlsCa"] = cert.into();
+        input["tlsCert"] = cert.into();
+        input["tlsKey"] = key.into();
+        assert_eq!(
+            call(&app, "POST", "/api/connections/test", "", input)
+                .await
+                .0,
+            StatusCode::OK
+        );
+    }
+
     #[tokio::test]
     async fn instance_switching_and_saved_connections_never_expose_credentials() {
         let vault = Arc::new(

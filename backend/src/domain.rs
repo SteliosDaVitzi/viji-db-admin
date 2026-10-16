@@ -118,10 +118,51 @@ pub struct ConnectionInput {
     pub ssl: bool,
     #[serde(default)]
     pub all_databases: bool,
+    #[serde(default)]
+    pub read_only: bool,
+    #[serde(default)]
+    pub tls_ca: Option<String>,
+    #[serde(default)]
+    pub tls_cert: Option<String>,
+    #[serde(default)]
+    pub tls_key: Option<String>,
 }
 
 impl ConnectionInput {
     pub fn validate(&self) -> Result<(), &'static str> {
+        let certificates = [&self.tls_ca, &self.tls_cert, &self.tls_key];
+        if certificates.iter().any(|value| {
+            value
+                .as_ref()
+                .is_some_and(|pem| pem.len() > 32768 || pem.contains('\0'))
+        }) {
+            return Err("Each TLS file must be PEM text of at most 32 KiB.");
+        }
+        if certificates.iter().any(|value| value.is_some())
+            && (!self.ssl || !matches!(self.provider.as_str(), "postgres" | "mysql" | "mariadb"))
+        {
+            return Err("TLS files require verified TLS with PostgreSQL, MySQL, or MariaDB.");
+        }
+        if self.tls_cert.is_some() != self.tls_key.is_some() {
+            return Err("Provide both a client certificate and its private key.");
+        }
+        for pem in [&self.tls_ca, &self.tls_cert].into_iter().flatten() {
+            if !pem.contains("-----BEGIN CERTIFICATE-----")
+                || !pem.contains("-----END CERTIFICATE-----")
+            {
+                return Err("Upload a PEM certificate file.");
+            }
+        }
+        if self.tls_key.as_ref().is_some_and(|pem| {
+            !["PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY"]
+                .iter()
+                .any(|kind| {
+                    pem.contains(&format!("-----BEGIN {kind}-----"))
+                        && pem.contains(&format!("-----END {kind}-----"))
+                })
+        }) {
+            return Err("Upload an unencrypted PEM private key.");
+        }
         if self.provider == "demo" {
             return Ok(());
         }

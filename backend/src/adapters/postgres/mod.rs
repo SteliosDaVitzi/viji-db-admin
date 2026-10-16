@@ -3,7 +3,8 @@ mod write;
 use crate::{application::*, domain::*};
 use async_trait::async_trait;
 use sqlx::{
-    Column as SqlxColumn, Connection, Executor, PgConnection, Row, SqlSafeStr, Statement, TypeInfo,
+    Column as SqlxColumn, ConnectOptions, Connection, Executor, PgConnection, Row, SqlSafeStr,
+    Statement, TypeInfo,
     postgres::{PgConnectOptions, PgSslMode},
 };
 use std::{str::FromStr, time::Duration};
@@ -94,7 +95,7 @@ fn query_error(error: sqlx::Error) -> AppError {
 }
 
 pub(super) async fn connect(input: &ConnectionInput) -> AppResult<PgConnection> {
-    let options = PgConnectOptions::from_str("postgresql://")?
+    let mut options = PgConnectOptions::from_str("postgresql://")?
         .host(&input.host)
         .port(input.port)
         .database(if input.database.is_empty() && input.all_databases {
@@ -109,7 +110,17 @@ pub(super) async fn connect(input: &ConnectionInput) -> AppResult<PgConnection> 
         } else {
             PgSslMode::Disable
         })
-        .application_name("webdb");
+        .application_name("webdb")
+        .disable_statement_logging();
+    if let Some(pem) = &input.tls_ca {
+        options = options.ssl_root_cert_from_pem(pem.as_bytes().to_vec());
+    }
+    if let Some(pem) = &input.tls_cert {
+        options = options.ssl_client_cert_from_pem(pem.as_bytes());
+    }
+    if let Some(pem) = &input.tls_key {
+        options = options.ssl_client_key_from_pem(pem.as_bytes());
+    }
     tokio::time::timeout(
         Duration::from_secs(10),
         PgConnection::connect_with(&options),

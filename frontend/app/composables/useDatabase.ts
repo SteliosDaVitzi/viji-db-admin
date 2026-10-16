@@ -23,6 +23,7 @@ export function useDatabase() {
   const selectedRow = ref<number | null>(null)
   const busy = ref(false)
   const connecting = ref(false)
+  const testing = ref(false)
   const connectionError = ref('')
   const error = ref('')
   for (const source of [error, connectionError])
@@ -191,6 +192,7 @@ export function useDatabase() {
     else await switchDatabase(database, table)
   }
   async function connect(input: ConnectionInput | string) {
+    if (testing.value || connecting.value) return false
     connecting.value = true
     connectionError.value = ''
     try {
@@ -218,6 +220,27 @@ export function useDatabase() {
       return false
     } finally {
       connecting.value = false
+    }
+  }
+  async function testConnection(input: ConnectionInput) {
+    if (testing.value || connecting.value)
+      throw new Error('A connection operation is already running.')
+    testing.value = true
+    connectionError.value = ''
+    try {
+      return await $fetch<{ ok: boolean; elapsedMs: number }>('/api/connections/test', {
+        method: 'POST',
+        body: input,
+      })
+    } catch (cause) {
+      // A test must never clear or replace the active session.
+      const failure = cause as { data?: { message?: string } }
+      throw new Error(
+        failure.data?.message ||
+          'Connection test failed. Check the service, host, port, credentials, and TLS settings.',
+      )
+    } finally {
+      testing.value = false
     }
   }
   async function deleteSavedConnection(id: string) {
@@ -331,6 +354,8 @@ export function useDatabase() {
     selectedRow,
     busy,
     connecting,
+    testing,
+    testConnection,
     connectionError,
     error,
     page,
