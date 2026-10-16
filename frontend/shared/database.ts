@@ -34,6 +34,15 @@ export interface TableInfo {
   name: string
   kind: string
   columns: string[]
+  primaryKeys?: string[]
+  foreignKeys?: ForeignKeyInfo[]
+}
+export interface ForeignKeyInfo {
+  name: string
+  column: string
+  referencedSchema: string
+  referencedTable: string
+  referencedColumn: string
 }
 export interface ColumnInfo {
   name: string

@@ -217,11 +217,25 @@ pub struct Provider {
     pub name: &'static str,
 }
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForeignKey {
+    pub name: String,
+    pub column: String,
+    pub referenced_schema: String,
+    pub referenced_table: String,
+    pub referenced_column: String,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Table {
     pub schema: String,
     pub name: String,
     pub kind: String,
     pub columns: Vec<String>,
+    #[serde(default)]
+    pub primary_keys: Vec<String>,
+    #[serde(default)]
+    pub foreign_keys: Vec<ForeignKey>,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

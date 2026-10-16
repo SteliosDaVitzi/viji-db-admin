@@ -105,9 +105,35 @@ pub(crate) async fn tables(input: &ConnectionInput) -> AppResult<Vec<Table>> {
                 name,
                 kind: record.try_get("TABLE_TYPE")?,
                 columns: vec![],
+                primary_keys: vec![],
+                foreign_keys: vec![],
             });
         if let Some(name) = record.try_get::<Option<String>, _>("COLUMN_NAME")? {
             table.columns.push(name);
+        }
+    }
+    let primary_keys = sqlx::query("SELECT TABLE_SCHEMA,TABLE_NAME,COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=DATABASE() AND CONSTRAINT_NAME='PRIMARY' ORDER BY TABLE_NAME,ORDINAL_POSITION")
+        .fetch_all(&mut connection).await?;
+    for key in primary_keys {
+        let schema: String = key.try_get("TABLE_SCHEMA")?;
+        let table_name: String = key.try_get("TABLE_NAME")?;
+        if let Some(table) = tables.get_mut(&(schema, table_name)) {
+            table.primary_keys.push(key.try_get("COLUMN_NAME")?);
+        }
+    }
+    let relationships = sqlx::query("SELECT CONSTRAINT_NAME,TABLE_SCHEMA,TABLE_NAME,COLUMN_NAME,REFERENCED_TABLE_SCHEMA,REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL ORDER BY TABLE_NAME,CONSTRAINT_NAME,ORDINAL_POSITION")
+        .fetch_all(&mut connection).await?;
+    for relation in relationships {
+        let schema: String = relation.try_get("TABLE_SCHEMA")?;
+        let table_name: String = relation.try_get("TABLE_NAME")?;
+        if let Some(table) = tables.get_mut(&(schema, table_name)) {
+            table.foreign_keys.push(ForeignKey {
+                name: relation.try_get("CONSTRAINT_NAME")?,
+                column: relation.try_get("COLUMN_NAME")?,
+                referenced_schema: relation.try_get("REFERENCED_TABLE_SCHEMA")?,
+                referenced_table: relation.try_get("REFERENCED_TABLE_NAME")?,
+                referenced_column: relation.try_get("REFERENCED_COLUMN_NAME")?,
+            });
         }
     }
     Ok(tables.into_values().collect())

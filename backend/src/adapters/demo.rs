@@ -136,6 +136,18 @@ impl DatabaseAdapter for DemoAdapter {
                 columns: dataset(name)
                     .map(|(columns, _)| columns.into_iter().map(|column| column.name).collect())
                     .unwrap_or_default(),
+                primary_keys: vec!["id".into()],
+                foreign_keys: if name == "orders" {
+                    vec![ForeignKey {
+                        name: "orders_customer_id_fkey".into(),
+                        column: "customer_id".into(),
+                        referenced_schema: "public".into(),
+                        referenced_table: "customers".into(),
+                        referenced_column: "id".into(),
+                    }]
+                } else {
+                    vec![]
+                },
             })
             .collect())
     }

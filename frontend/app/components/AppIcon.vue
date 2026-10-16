@@ -18,6 +18,12 @@ import check from '@material-symbols/svg-400/outlined/check.svg?raw'
 import grid from '@material-symbols/svg-400/outlined/grid_view.svg?raw'
 import sort from '@material-symbols/svg-400/outlined/sort.svg?raw'
 import play from '@material-symbols/svg-400/outlined/play_arrow.svg?raw'
+import diagram from '@material-symbols/svg-400/outlined/schema.svg?raw'
+import link from '@material-symbols/svg-400/outlined/link.svg?raw'
+import fit from '@material-symbols/svg-400/outlined/center_focus_strong.svg?raw'
+import zoomIn from '@material-symbols/svg-400/outlined/zoom_in.svg?raw'
+import zoomOut from '@material-symbols/svg-400/outlined/zoom_out.svg?raw'
+import minus from '@material-symbols/svg-400/outlined/remove.svg?raw'
 
 const props = defineProps<{ name: string; size?: number }>()
 // Unmodified Google Material Symbols from the pinned package; no remote requests.
@@ -41,6 +47,12 @@ const icons: Record<string, string> = {
   grid,
   sort,
   play,
+  diagram,
+  link,
+  fit,
+  zoomIn,
+  zoomOut,
+  minus,
 }
 const paths = computed(() =>
   [...(icons[props.name] || database).matchAll(/<path d="([^"]+)"/g)].map((match) => match[1]),

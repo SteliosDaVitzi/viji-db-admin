@@ -104,6 +104,21 @@ async fn session_browsing_validation_and_disconnect() {
             let columns = customers["columns"].as_array().unwrap();
             assert!(columns.iter().any(|column| column == "id"));
             assert!(columns.iter().any(|column| column == "email"));
+            assert!(
+                customers["primaryKeys"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&serde_json::json!("id"))
+            );
+            let orders = tables
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|table| table["name"] == "orders")
+                .unwrap();
+            assert_eq!(orders["foreignKeys"][0]["column"], "customer_id");
+            assert_eq!(orders["foreignKeys"][0]["referencedTable"], "customers");
+            assert_eq!(orders["foreignKeys"][0]["referencedColumn"], "id");
             continue;
         }
         if path.ends_with("pageSize=5") {

@@ -26,6 +26,7 @@ const recordEditable = computed(
 )
 const toast = useToast()
 const settingsOpen = ref(false)
+const schemaDiagramOpen = ref(false)
 const context = shallowRef<{
   x: number
   y: number
@@ -156,6 +157,7 @@ const explorerKey = ref(0)
 const queryWorkspaceKey = ref(0)
 watch(session, () => {
   settingsOpen.value = false
+  schemaDiagramOpen.value = false
   context.value = null
   editingCell.value = null
   editor.value = null
@@ -316,22 +318,33 @@ async function cellSaved() {
             </div>
           </div>
           <div v-if="session" class="database-select-row">
-            <DatabaseSelect
-              v-if="session"
-              :databases="session.allDatabases ? databases : [session.database]"
-              :model-value="session.database"
-              :disabled="connecting || switching || tablesLoading"
-              @update:model-value="db.switchDatabase($event)"
-            />
+            <div class="database-select-controls">
+              <DatabaseSelect
+                :databases="session.allDatabases ? databases : [session.database]"
+                :model-value="session.database"
+                :disabled="connecting || switching || tablesLoading"
+                @update:model-value="db.switchDatabase($event)"
+              />
+              <button
+                v-if="session.provider === 'postgres'"
+                class="icon-button database-settings-button"
+                title="Database settings"
+                aria-label="Database settings"
+                :disabled="connecting || switching"
+                @click="settingsOpen = true"
+              >
+                <AppIcon name="settings" :size="16" />
+              </button>
+            </div>
             <button
-              v-if="session.provider === 'postgres'"
-              class="icon-button database-settings-button"
-              title="Database settings"
-              aria-label="Database settings"
-              :disabled="connecting || switching"
-              @click="settingsOpen = true"
+              class="button secondary small database-diagram-button"
+              title="Open database diagram"
+              aria-label="Open database diagram"
+              :disabled="connecting || switching || tablesLoading"
+              @click="schemaDiagramOpen = true"
             >
-              <AppIcon name="settings" :size="16" />
+              <AppIcon name="diagram" :size="17" />
+              <span>Diagram</span>
             </button>
           </div>
         </div>
@@ -670,6 +683,15 @@ async function cellSaved() {
       :database="session.database"
       :provider="session.provider"
       @close="settingsOpen = false"
+    />
+    <SchemaDiagram
+      v-if="schemaDiagramOpen && session"
+      :database="session.database"
+      :tables="tables"
+      :selected-table="selectedTable"
+      :loading="tablesLoading"
+      @choose="workspaceTabs.chooseDatabaseTable(session.database, $event)"
+      @close="schemaDiagramOpen = false"
     />
     <CellEditor
       v-if="editingCell"

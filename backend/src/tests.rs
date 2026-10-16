@@ -55,6 +55,8 @@ impl DatabaseAdapter for InstanceAdapter {
             name: input.database.clone(),
             kind: "BASE TABLE".into(),
             columns: vec![],
+            primary_keys: vec![],
+            foreign_keys: vec![],
         }])
     }
     async fn rows(&self, _: &ConnectionInput, _: &BrowseQuery) -> AppResult<TablePage> {

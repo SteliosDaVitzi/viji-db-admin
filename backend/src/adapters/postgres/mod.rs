@@ -313,15 +313,48 @@ impl DatabaseAdapter for PostgresAdapter {
         let mut tx = begin(&mut connection).await?;
         let rows = sqlx::query("SELECT t.table_schema, t.table_name, t.table_type, ARRAY(SELECT c.column_name::text FROM information_schema.columns c WHERE c.table_schema=t.table_schema AND c.table_name=t.table_name ORDER BY c.ordinal_position) AS columns FROM information_schema.tables t WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema') ORDER BY t.table_schema, t.table_name")
             .fetch_all(&mut *tx).await?;
-        let tables = rows
+        let mut tables: Vec<Table> = rows
             .iter()
             .map(|r| Table {
                 schema: r.get("table_schema"),
                 name: r.get("table_name"),
                 kind: r.get("table_type"),
                 columns: r.get("columns"),
+                primary_keys: vec![],
+                foreign_keys: vec![],
             })
             .collect();
+        let primary_keys = sqlx::query("SELECT tc.table_schema,tc.table_name,kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_catalog=kcu.constraint_catalog AND tc.constraint_schema=kcu.constraint_schema AND tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema AND tc.table_name=kcu.table_name WHERE tc.constraint_type='PRIMARY KEY' ORDER BY tc.table_schema,tc.table_name,kcu.ordinal_position")
+            .fetch_all(&mut *tx).await?;
+        for key in primary_keys {
+            let schema: String = key.get("table_schema");
+            let table_name: String = key.get("table_name");
+            let column: String = key.get("column_name");
+            if let Some(table) = tables
+                .iter_mut()
+                .find(|table| table.schema == schema && table.name == table_name)
+            {
+                table.primary_keys.push(column);
+            }
+        }
+        let relationships = sqlx::query("SELECT con.conname AS constraint_name,source_ns.nspname AS table_schema,source_table.relname AS table_name,source_column.attname AS column_name,target_ns.nspname AS referenced_schema,target_table.relname AS referenced_table,target_column.attname AS referenced_column FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class source_table ON source_table.oid=con.conrelid JOIN pg_catalog.pg_namespace source_ns ON source_ns.oid=source_table.relnamespace JOIN pg_catalog.pg_class target_table ON target_table.oid=con.confrelid JOIN pg_catalog.pg_namespace target_ns ON target_ns.oid=target_table.relnamespace JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS source_key(attnum,ord) ON true JOIN LATERAL unnest(con.confkey) WITH ORDINALITY AS target_key(attnum,ord) ON target_key.ord=source_key.ord JOIN pg_catalog.pg_attribute source_column ON source_column.attrelid=source_table.oid AND source_column.attnum=source_key.attnum JOIN pg_catalog.pg_attribute target_column ON target_column.attrelid=target_table.oid AND target_column.attnum=target_key.attnum WHERE con.contype='f' ORDER BY source_ns.nspname,source_table.relname,con.conname,source_key.ord")
+            .fetch_all(&mut *tx).await?;
+        for relation in relationships {
+            let schema: String = relation.get("table_schema");
+            let table_name: String = relation.get("table_name");
+            if let Some(table) = tables
+                .iter_mut()
+                .find(|table| table.schema == schema && table.name == table_name)
+            {
+                table.foreign_keys.push(ForeignKey {
+                    name: relation.get("constraint_name"),
+                    column: relation.get("column_name"),
+                    referenced_schema: relation.get("referenced_schema"),
+                    referenced_table: relation.get("referenced_table"),
+                    referenced_column: relation.get("referenced_column"),
+                });
+            }
+        }
         tx.commit().await?;
         Ok(tables)
     }
