@@ -11,7 +11,6 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; saved: [] }>()
 const dialog = useTemplateRef<HTMLDialogElement>('dialog')
 const input = useTemplateRef<HTMLTextAreaElement>('input')
-const modeInput = useTemplateRef<HTMLSelectElement>('modeInput')
 const original = props.row[props.column.name]
 const value = ref(
   original === null
@@ -57,11 +56,12 @@ const changed = computed(() =>
 )
 async function focusValue() {
   await nextTick()
-  if (mode.value === 'null') modeInput.value?.focus()
-  else {
-    input.value?.focus()
-    input.value?.select()
-  }
+  input.value?.focus()
+  input.value?.select()
+}
+function editValue(event: Event) {
+  value.value = (event.target as HTMLTextAreaElement).value
+  mode.value = 'value'
 }
 onMounted(async () => {
   dialog.value?.showModal()
@@ -131,17 +131,17 @@ async function save() {
         <textarea
           id="cell-value"
           ref="input"
-          v-model="value"
+          :value="mode === 'null' ? '' : value"
           rows="1"
           :readonly="!canEdit"
-          :disabled="saving || mode === 'null'"
+          :disabled="saving"
           :placeholder="mode === 'null' ? 'NULL' : 'Value'"
           spellcheck="false"
+          @input="editValue"
         />
         <div class="cell-editor-actions">
           <select
             v-if="canEdit && column.nullable"
-            ref="modeInput"
             v-model="mode"
             aria-label="Value or NULL"
             :disabled="saving"

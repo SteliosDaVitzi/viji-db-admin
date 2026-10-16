@@ -6,6 +6,13 @@ const timers = new Map<number, ReturnType<typeof setTimeout>>()
 const paused = new Set<number>()
 let observer: MutationObserver | undefined
 
+async function showRegion() {
+  await nextTick()
+  const element = region.value
+  if (messages.value.length && element?.isConnected && !element.matches(':popover-open'))
+    element.showPopover()
+}
+
 function pause(id: number) {
   paused.add(id)
   clearTimeout(timers.get(id))
@@ -21,12 +28,11 @@ function resume(id: number) {
 }
 watch(
   messages,
-  async (items) => {
+  (items) => {
     for (const id of timers.keys()) if (!items.some((item) => item.id === id)) pause(id)
     for (const id of paused) if (!items.some((item) => item.id === id)) paused.delete(id)
     for (const item of items) if (!timers.has(item.id) && !paused.has(item.id)) resume(item.id)
-    await nextTick()
-    if (items.length && !region.value?.matches(':popover-open')) region.value?.showPopover()
+    void showRegion()
   },
   { immediate: true },
 )
@@ -38,6 +44,7 @@ onMounted(() => {
     if (target.value !== next) target.value = next
   }
   updateTarget()
+  void showRegion()
   observer = new MutationObserver(updateTarget)
   observer.observe(document.body, {
     subtree: true,
@@ -46,10 +53,7 @@ onMounted(() => {
     attributeFilter: ['open'],
   })
 })
-watch(target, async () => {
-  await nextTick()
-  if (messages.value.length && !region.value?.matches(':popover-open')) region.value?.showPopover()
-})
+watch(target, showRegion)
 onBeforeUnmount(() => {
   observer?.disconnect()
   for (const id of timers.keys()) pause(id)
