@@ -41,11 +41,73 @@ const storageError = ref('')
 const library = useTemplateRef<HTMLDetailsElement>('library')
 const editor = useTemplateRef<HTMLTextAreaElement>('editor')
 const nameInput = useTemplateRef<HTMLInputElement>('nameInput')
+const workspace = useTemplateRef<HTMLElement>('workspace')
+const editorHeight = ref(124)
+const minEditorHeight = 64
+const maxEditorHeight = ref(600)
+const dragging = ref(false)
+let resizeObserver: ResizeObserver | undefined
+let drag: { pointerId: number; y: number; height: number } | null = null
+function setEditorHeight(height: number) {
+  editorHeight.value = Math.round(
+    Math.min(maxEditorHeight.value, Math.max(minEditorHeight, height)),
+  )
+}
+function updateResizeBounds() {
+  const section = workspace.value
+  const textarea = editor.value
+  if (!section?.parentElement || !textarea) return
+  const chrome = section.getBoundingClientRect().height - textarea.getBoundingClientRect().height
+  // Keep room for the table title, toolbar, and usable grid rows.
+  maxEditorHeight.value = Math.max(
+    minEditorHeight,
+    section.parentElement.clientHeight - chrome - 210,
+  )
+  setEditorHeight(editorHeight.value)
+}
+function startResize(event: PointerEvent) {
+  if (event.button !== 0) return
+  event.preventDefault()
+  updateResizeBounds()
+  const handle = event.currentTarget as HTMLElement
+  handle.focus({ preventScroll: true })
+  handle.setPointerCapture(event.pointerId)
+  drag = { pointerId: event.pointerId, y: event.clientY, height: editorHeight.value }
+  dragging.value = true
+}
+function moveResize(event: PointerEvent) {
+  if (drag?.pointerId !== event.pointerId) return
+  setEditorHeight(drag.height + event.clientY - drag.y)
+}
+function endResize(event: PointerEvent) {
+  if (drag?.pointerId !== event.pointerId) return
+  drag = null
+  dragging.value = false
+  const handle = event.currentTarget as HTMLElement
+  if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId)
+}
+function resizeWithKeyboard(event: KeyboardEvent) {
+  if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  updateResizeBounds()
+  const step = event.shiftKey ? 48 : 16
+  setEditorHeight(
+    event.key === 'Home'
+      ? minEditorHeight
+      : event.key === 'End'
+        ? maxEditorHeight.value
+        : editorHeight.value + (event.key === 'ArrowUp' ? -step : step),
+  )
+}
 function closeLibrary(event: PointerEvent) {
   if (library.value && !library.value.contains(event.target as Node)) library.value.open = false
 }
 onMounted(() => {
   document.addEventListener('pointerdown', closeLibrary)
+  resizeObserver = new ResizeObserver(updateResizeBounds)
+  if (workspace.value?.parentElement) resizeObserver.observe(workspace.value.parentElement)
+  resizeObserver.observe(workspace.value!)
+  updateResizeBounds()
   try {
     const stored: unknown = JSON.parse(localStorage.getItem(storageKey) || '[]')
     if (!Array.isArray(stored) || stored.length > 100 || !stored.every(isSavedQuery)) {
@@ -57,7 +119,10 @@ onMounted(() => {
     storageError.value = 'Browser storage is unavailable. Queries cannot be saved here.'
   }
 })
-onUnmounted(() => document.removeEventListener('pointerdown', closeLibrary))
+onUnmounted(() => {
+  document.removeEventListener('pointerdown', closeLibrary)
+  resizeObserver?.disconnect()
+})
 function isSavedQuery(value: unknown): value is SavedQuery {
   if (!value || typeof value !== 'object') return false
   const query = value as Partial<SavedQuery>
@@ -199,7 +264,7 @@ function run() {
 </script>
 
 <template>
-  <section class="query-space" aria-label="Query workspace">
+  <section ref="workspace" class="query-space" aria-label="Query workspace">
     <div class="query-toolbar">
       <div class="query-tabs" role="tablist" aria-label="Queries">
         <div
@@ -308,6 +373,7 @@ function run() {
           ref="editor"
           v-model="sql"
           class="sql-editor"
+          :style="{ height: `${editorHeight}px` }"
           rows="5"
           wrap="off"
           aria-label="SQL query"
@@ -357,5 +423,26 @@ function run() {
       <span v-if="feedback" role="status">{{ feedback }}</span>
     </div>
     <p v-if="storageError" class="query-storage-error" role="alert">{{ storageError }}</p>
+    <div
+      class="query-resize"
+      :class="{ dragging }"
+      role="separator"
+      tabindex="0"
+      aria-label="Resize query workspace"
+      aria-orientation="horizontal"
+      aria-controls="query-panel table-grid-region"
+      :aria-valuemin="minEditorHeight"
+      :aria-valuemax="maxEditorHeight"
+      :aria-valuenow="editorHeight"
+      :aria-valuetext="`Query editor height: ${editorHeight} pixels`"
+      title="Drag to resize · Arrow keys to adjust · Double-click to reset"
+      @pointerdown="startResize"
+      @pointermove="moveResize"
+      @pointerup="endResize"
+      @pointercancel="endResize"
+      @lostpointercapture="endResize"
+      @keydown="resizeWithKeyboard"
+      @dblclick="setEditorHeight(124)"
+    />
   </section>
 </template>

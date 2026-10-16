@@ -389,7 +389,7 @@ function inspectRow(index: number) {
             Try again
           </button>
         </div>
-        <div class="data-body">
+        <div id="table-grid-region" class="data-body">
           <section
             class="data-content"
             role="tabpanel"

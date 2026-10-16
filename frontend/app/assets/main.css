@@ -712,8 +712,7 @@ kbd {
   flex-shrink: 0;
   min-width: 0;
   width: 100%;
-  background: var(--sidebar);
-  box-shadow: 0 8px 22px #0002;
+  background: var(--canvas);
   position: relative;
   z-index: 2;
 }
@@ -811,16 +810,15 @@ kbd {
   display: block;
   min-width: 0;
   width: 100%;
-  min-height: 104px;
+  min-height: 64px;
   height: 124px;
-  max-height: min(360px, 40dvh);
-  resize: vertical;
+  resize: none;
   margin: 0;
   padding: 12px 24px 12px 0;
   border: 0;
   border-radius: 0;
   outline: none;
-  background: var(--sidebar);
+  background: var(--canvas);
   color: var(--text);
   font:
     12px/20px Consolas,
@@ -828,8 +826,48 @@ kbd {
     monospace;
   tab-size: 2;
 }
+.sql-editor:focus,
 .sql-editor:focus-visible {
-  background: #1b1e22;
+  background: var(--canvas);
+  box-shadow: none;
+  outline: none;
+}
+.query-resize {
+  position: relative;
+  height: 24px;
+  cursor: row-resize;
+  touch-action: none;
+  user-select: none;
+  outline: none;
+}
+.query-resize::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--raised);
+}
+.query-resize::after {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: calc(50% - 22px);
+  width: 44px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--muted);
+}
+.query-resize:hover::after,
+.query-resize:focus-visible::after,
+.query-resize.dragging::after {
+  background: var(--accent);
+}
+.database-main:has(.query-resize.dragging),
+.database-main:has(.query-resize.dragging) * {
+  cursor: row-resize;
+  user-select: none;
 }
 .query-footnote {
   color: var(--muted);
