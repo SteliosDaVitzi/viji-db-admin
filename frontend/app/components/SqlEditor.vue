@@ -86,12 +86,12 @@ onMounted(() => {
         }),
         EditorView.theme({
           '&.cm-editor': { height: '100%', backgroundColor: 'var(--canvas)', color: 'var(--text)' },
-          '&.cm-focused': { outline: 'none' },
+          '&.cm-focused': { outline: 'none', boxShadow: 'inset 2px 0 var(--accent)' },
           '.cm-scroller': {
             overflow: 'auto',
-            fontFamily: 'Consolas, "Cascadia Code", monospace',
-            fontSize: '12px',
-            lineHeight: '20px',
+            fontFamily: 'var(--font-code)',
+            fontSize: '13px',
+            lineHeight: '22px',
           },
           '.cm-content': { padding: '12px 0', caretColor: 'var(--text)' },
           '.cm-line': { padding: '0 24px 0 0' },
