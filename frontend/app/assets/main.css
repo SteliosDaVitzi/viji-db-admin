@@ -174,16 +174,16 @@
   --text: #e6e9ed;
   --secondary: #b0b7c1;
   --muted: #9099a6;
-  --accent: #79c7bb;
-  --accent-soft: #233c39;
+  --accent: #93b8f2;
+  --accent-soft: #27364b;
   --green: #8fc9a6;
   --danger: #f0a5a5;
   --surface-hover: #2c3238;
   --row-stripe: #1c1f22;
-  --accent-hover: #a0ded3;
+  --accent-hover: #bdd3f7;
   --amber: #d9b77e;
   --danger-soft: #382629;
-  --focus-ring: #79c7bb66;
+  --focus-ring: #93b8f266;
   --font-ui: 'IBM Plex Sans Variable', system-ui, sans-serif;
   --font-code: 'IBM Plex Mono', monospace;
   --text-xs: 0.786rem;
@@ -328,8 +328,8 @@ svg {
   font-weight: 500;
 }
 .button.primary {
-  background: linear-gradient(180deg, #91d4c9, var(--accent));
-  color: #102d28;
+  background: var(--accent);
+  color: #17283f;
   box-shadow: inset 0 1px #ffffff20;
 }
 .button.primary:hover {
@@ -578,7 +578,9 @@ kbd {
   justify-content: safe center;
   padding: clamp(20px, 4vh, 40px) clamp(20px, 4vw, 35px);
   min-width: 0;
-  background: linear-gradient(160deg, #1e2226, var(--canvas) 60%);
+  background:
+    radial-gradient(ellipse at 25% 0%, #5d82bf1c, transparent 65%),
+    linear-gradient(145deg, #20252d, var(--canvas) 65%);
 }
 .connection-form {
   width: 100%;
