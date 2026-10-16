@@ -1,4 +1,4 @@
-use super::postgres::{connect, sensitive_setting};
+use super::{connect, sensitive_setting};
 use crate::{application::*, domain::*};
 use sqlx::{Connection, Row};
 

@@ -40,11 +40,13 @@ pub trait DatabaseAdapter: Send + Sync {
         _input: &ConnectionInput,
         _mutation: &Mutation,
     ) -> AppResult<MutationResult> {
-        Err(invalid(
-            "Editing is unavailable for this provider. Connect to PostgreSQL.",
-        ))
+        Err(invalid("Editing is unavailable for this provider."))
     }
     fn provider(&self) -> Provider;
+    /// Default connection database for instance discovery, if supported.
+    fn maintenance_database(&self) -> Option<&'static str> {
+        None
+    }
     async fn databases(&self, input: &ConnectionInput) -> AppResult<Vec<String>> {
         Ok(vec![input.database.clone()])
     }

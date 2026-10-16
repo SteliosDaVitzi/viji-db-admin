@@ -15,7 +15,14 @@ const emit = defineEmits<{
   schemaContext: [event: MouseEvent, schema: string]
 }>()
 const filter = ref('')
-const expanded = ref(new Set(['public']))
+const expanded = ref(new Set(['public', 'dbo']))
+watch(
+  () => props.tables,
+  (tables, previous) => {
+    if (!previous?.length && tables[0]) expanded.value.add(tables[0].schema)
+  },
+  { immediate: true },
+)
 const treeId = useId()
 const filteredTables = computed(() => {
   const query = filter.value.trim().toLowerCase()
@@ -40,7 +47,7 @@ function toggle(schema: string) {
 watch(
   () => props.activeDatabase,
   () => {
-    expanded.value = new Set(['public'])
+    expanded.value = new Set(['public', 'dbo'])
     filter.value = ''
   },
 )

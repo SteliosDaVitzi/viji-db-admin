@@ -1,3 +1,5 @@
+mod settings;
+mod write;
 use crate::{application::*, domain::*};
 use async_trait::async_trait;
 use sqlx::{
@@ -138,12 +140,15 @@ async fn begin(connection: &mut PgConnection) -> AppResult<sqlx::Transaction<'_,
 
 #[async_trait]
 impl DatabaseAdapter for PostgresAdapter {
+    fn maintenance_database(&self) -> Option<&'static str> {
+        Some("postgres")
+    }
     async fn update_settings(
         &self,
         input: &ConnectionInput,
         request: &UpdateDatabaseSettings,
     ) -> AppResult<()> {
-        super::postgres_settings::update(input, request).await
+        settings::update(input, request).await
     }
     async fn settings(&self, input: &ConnectionInput) -> AppResult<DatabaseSettings> {
         let mut connection = connect(input).await?;
@@ -164,7 +169,7 @@ impl DatabaseAdapter for PostgresAdapter {
         let properties: serde_json::Value = sqlx::query_scalar(
             "SELECT to_jsonb(d) || jsonb_build_object('owner', pg_get_userbyid(datdba), 'encoding', pg_encoding_to_char(encoding), 'tablespace', (SELECT spcname FROM pg_tablespace WHERE oid = d.dattablespace)) FROM pg_database d WHERE datname = current_database()"
         ).fetch_one(&mut *tx).await?;
-        let (can_edit, superuser) = super::postgres_settings::permissions(&mut tx).await?;
+        let (can_edit, superuser) = settings::permissions(&mut tx).await?;
         tx.rollback().await?;
         Ok(DatabaseSettings {
             provider: input.provider.clone(),
@@ -173,14 +178,14 @@ impl DatabaseAdapter for PostgresAdapter {
             settings: settings
                 .into_iter()
                 .map(|mut setting| {
-                    setting["databaseScoped"] = super::postgres_settings::editable(
+                    setting["databaseScoped"] = settings::editable(
                         setting["name"].as_str().unwrap_or_default(),
                         setting["context"].as_str().unwrap_or_default(),
                         true,
                     )
                     .into();
                     setting["editable"] = (can_edit
-                        && super::postgres_settings::editable(
+                        && settings::editable(
                             setting["name"].as_str().unwrap_or_default(),
                             setting["context"].as_str().unwrap_or_default(),
                             superuser,
@@ -197,7 +202,7 @@ impl DatabaseAdapter for PostgresAdapter {
         input: &ConnectionInput,
         mutation: &Mutation,
     ) -> AppResult<MutationResult> {
-        super::postgres_write::mutate(input, mutation).await
+        write::mutate(input, mutation).await
     }
     async fn databases(&self, input: &ConnectionInput) -> AppResult<Vec<String>> {
         let mut connection = connect(input).await?;

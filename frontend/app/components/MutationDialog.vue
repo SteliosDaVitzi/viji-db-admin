@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { providerOptions, quoteIdentifier } from '../providers'
 import type { ColumnInfo, Mutation, TableInfo } from '../../shared/database'
 const props = defineProps<{
+  provider: string
   mode: 'insert' | 'update' | 'delete' | 'schema'
   table: TableInfo | null
   columns: ColumnInfo[]
@@ -17,9 +19,27 @@ const error = ref('')
 const confirmation = ref('')
 const action = ref<'execute' | 'createDatabase' | 'dropDatabase' | 'dropTable'>('execute')
 const name = ref('')
-const quote = (value: string) => `"${value.replaceAll('"', '""')}"`
+const options = computed(() => providerOptions(props.provider))
+const quote = (value: string) => quoteIdentifier(value, props.provider)
+const exampleSchema =
+  props.table?.schema ??
+  (props.provider === 'sqlserver'
+    ? 'dbo'
+    : props.provider === 'postgres'
+      ? 'public'
+      : props.database)
+const defaultSchema =
+  props.provider === 'mysql' || props.provider === 'mariadb'
+    ? props.database || 'your_database'
+    : exampleSchema
+const identity =
+  props.provider === 'sqlserver'
+    ? 'bigint IDENTITY(1,1) PRIMARY KEY'
+    : props.provider === 'postgres'
+      ? 'bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY'
+      : 'bigint AUTO_INCREMENT PRIMARY KEY'
 const sql = ref(
-  'CREATE TABLE "public"."new_table" (\n  "id" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  "name" text NOT NULL\n);',
+  `CREATE TABLE ${quote(defaultSchema)}.${quote('new_table')} (\n  ${quote('id')} ${identity},\n  ${quote('name')} varchar(255) NOT NULL\n);`,
 )
 function text(value: unknown) {
   return value === null || value === undefined
@@ -162,8 +182,8 @@ async function save() {
             />
           </label>
           <p class="muted">
-            Run one statement. Define foreign keys, UNIQUE, CHECK, and other constraints using
-            PostgreSQL SQL. Changes commit immediately after confirmation.
+            Run one statement. Define foreign keys, UNIQUE, CHECK, and other constraints using the
+            connected database SQL dialect. {{ options.ddlWarning }}
           </p></template
         >
         <label v-else-if="action === 'createDatabase' || action === 'dropDatabase'"
@@ -171,11 +191,11 @@ async function save() {
             v-model="name"
             :disabled="saving"
             required
-            maxlength="63"
+            :maxlength="options.nameLimit"
             autocomplete="off"
         /></label>
         <p v-else class="mutation-warning">
-          Permanently drop {{ target }} and all its records. Dependent objects block this operation.
+          Permanently drop {{ target }} and all its records. Database dependency rules apply.
         </p>
         <p v-if="action === 'dropDatabase'" class="mutation-warning">
           Permanently delete the named database and all its contents. Switch away from it and
@@ -184,8 +204,8 @@ async function save() {
       </template>
       <template v-else-if="mode !== 'delete'">
         <p class="muted">
-          Values use PostgreSQL text format, including JSON and arrays. Omit generated fields;
-          omitted insert fields use their database defaults.
+          {{ options.recordHelp }} Omit generated fields; omitted insert fields use their database
+          defaults.
         </p>
         <div class="mutation-fields">
           <div v-for="column in columns" :key="column.name" class="mutation-field">
@@ -230,6 +250,9 @@ async function save() {
         </p>
         <pre class="mutation-record">{{ JSON.stringify(row, null, 2) }}</pre>
       </template>
+      <p v-if="provider !== 'postgres' && (mode === 'update' || mode === 'delete')" class="muted">
+        Updating or deleting requires a primary key and an unchanged record.
+      </p>
       <p v-if="mode === 'update'" class="mutation-warning">
         Database triggers and foreign key update rules also apply to this change.
       </p>

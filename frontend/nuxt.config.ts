@@ -19,7 +19,10 @@ export default defineNuxtConfig({
     head: {
       title: 'WebDB — a quiet place for your data',
       meta: [
-        { name: 'description', content: 'Browse, edit, and manage your PostgreSQL databases.' },
+        {
+          name: 'description',
+          content: 'Browse PostgreSQL, MySQL, MariaDB, and SQL Server databases.',
+        },
       ],
     },
   },

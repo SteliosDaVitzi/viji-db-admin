@@ -1,8 +1,45 @@
 # WebDB
 
-A database workspace with a Nuxt 4 / Vue 3 / TypeScript interface and a Rust / Axum backend. PostgreSQL supports browsing, record editing, and schema changes. A clearly labeled read-only sample workspace works without a database.
+A database workspace with a Nuxt 4 / Vue 3 / TypeScript interface and a Rust / Axum backend. PostgreSQL supports browsing, record editing, and schema changes. MySQL, MariaDB, and SQL Server support browsing, record editing, and explicit schema changes. A clearly labeled read-only sample workspace works without a database.
 
-## Editing and schema changes
+## Database providers
+
+| Provider | Default port | Browsing and SELECT queries | Instance discovery | Editing and settings |
+| --- | --- | --- | --- | --- |
+| PostgreSQL | 5432 | Yes | Yes, through postgres | Yes |
+| MySQL 8+ | 3306 | Yes | Yes, without a default database | Records and schema; no settings |
+| MariaDB 10.6+ | 3306 | Yes | Yes, without a default database | Records and schema; no settings |
+| SQL Server 2016+ | 1433 | Yes | Yes, through master | Records and schema; no settings |
+
+Select a provider in the connection form; the port, query dialect, completion quoting, and generated SELECT adapt automatically. MySQL schemas correspond to databases. SQL Server uses SQL authentication over TCP; enter a reachable TCP port rather than an instance-name suffix. TLS verifies server certificates and hostnames by default. Turning it off disables TLS negotiation; it does not silently trust a certificate. Saved connections and database switching work with each provider.
+
+New providers return non-NULL cell values as exact text, including numbers, dates, JSON and booleans; binary values use hexadecimal text. NULL remains JSON null. Table sorting uses native database values. The new providers expose column types, nullability, defaults, and primary keys, with generated and identity fields marked read only. PostgreSQL settings remain exclusive to PostgreSQL.
+
+MySQL and MariaDB browsing runs with session-level read-only transactions and query/lock timeouts. Their query editor accepts one parsed SELECT, including CTEs and joins, and rejects writes, SELECT INTO, locking SELECTs, executable comments, and pass-through table functions. The adapter executes the parsed SQL with backslash escapes disabled. SQL Server has no equivalent read-only transaction mode: its editor validates a single SELECT, rejects those same unsafe constructs, and validates a derived SELECT with the server before execution. For a browse-only permission boundary, use a SELECT-only account. Explicit editing needs corresponding write privileges. SQL Server queries must return named columns and be valid inside a derived table; CTEs and a bare inner ORDER BY are currently unsupported. Use TOP or OFFSET with an inner ORDER BY. Paging without a unique ordering can shift between requests.
+
+Provider tests are opt-in and require explicit connection JSON naming a disposable database. The variables are WEBDB_TEST_MYSQL_CONNECTION_JSON, WEBDB_TEST_MARIADB_CONNECTION_JSON and WEBDB_TEST_SQLSERVER_CONNECTION_JSON, with the same ConnectionInput shape as PostgreSQL and the corresponding provider ID (mysql, mariadb, sqlserver). Run a single provider, for example:
+
+```sh
+cargo test --manifest-path backend/Cargo.toml --test providers providers::mysql::browse -- --ignored
+```
+
+These tests exercise connectivity, discovery, exact numeric and NULL results, and read-only query rejection. The additional writes tests create and remove randomly named tables in the explicitly configured disposable database, and cover defaults, generated columns, constraints, binary values, quoted identifiers, stale rows, and no-primary-key rejection. They do not provision databases. No live provider tests run without the explicit configuration.
+
+## Editing in MySQL, MariaDB, and SQL Server
+
+Double-click a cell to update it, select a row to delete it, or choose **Insert record**. Inserts and deletes retain the existing APPLY confirmation. Updates and deletes require a primary key and compare every browsed field against the current record before changing it; stale or deleted records are refused. Inserts also work in tables without a primary key. Views and query results remain read only. Generated, identity, rowversion, and unsupported fields cannot be supplied by the record editor. Omitted insert fields use database defaults. NULL and empty text remain distinct. Binary fields accept hexadecimal byte pairs without a 0x prefix; MySQL/MariaDB BIT fields accept hexadecimal digits, while SQL Server bit fields use 0 or 1.
+
+MySQL and MariaDB structured record editing requires InnoDB and enables strict conversion checks to reject truncated/invalid values. It locks the target row and keeps the table metadata stable in a transaction. SQL Server takes a short exclusive table lock while comparing and applying a structured record change; failures roll back. Triggers, foreign keys, cascading rules, defaults and constraints are enforced by the database. Trigger side effects in external systems or nontransactional engines cannot be undone by this tool.
+
+**Database changes** provides a dialect-specific CREATE TABLE example, one-statement table/index DDL and INSERT/UPDATE/DELETE, plus dedicated drop-table actions. Instance mode also enables create/drop database actions, with system-database and active-database protections and no forced client disconnections. Raw transaction control, batches, procedures, and raw CREATE/DROP DATABASE are rejected; use the dedicated database actions. MySQL/MariaDB DDL implicitly commits and cannot be rolled back; raw SQL follows the target storage engine transaction behavior. This is stated in the confirmation dialog. The SQL-change parser accepts a subset of each dialect; SQL Server computed-column DDL is currently unsupported, while existing computed columns can be browsed and remain protected during record editing. SQL Server table/index changes run inside a transaction; database create/drop run separately. Writes commit immediately with no undo. Database settings editing remains PostgreSQL-only.
+
+To run an individual write test, use the same explicit provider connection variable and select, for example:
+
+```sh
+cargo test --manifest-path backend/Cargo.toml --test providers providers::mysql::writes -- --ignored
+```
+
+## PostgreSQL editing and schema changes
 
 Browse a PostgreSQL base table and double-click a cell (or press Enter on a focused cell) to edit its value in a compact horizontal dialog. Click **Save value** or press **Ctrl/⌘ + Enter** to save. A single row click selects and highlights it, revealing **Delete row** in the table toolbar. Use **Insert record** above the table to add one. Values use PostgreSQL text input (for example `true`, a UUID, JSON text, or `{1,2}` for an array). NULL, empty text, and omitted fields are distinct. Omitted insert fields use database defaults; generated columns are maintained by PostgreSQL. Inserts, deletes, and schema changes require typing `APPLY` and confirming; individual cell edits use **Save value**. Failed changes preserve the draft.
 
@@ -69,12 +106,17 @@ The dev launcher inherits these variables; it does not load them from `.env`. Bo
 frontend/
   app/components/       Connection form, data grid, record inspector, icons
   app/composables/      Typed workspace state and request lifecycle
+  app/providers/        Dedicated provider directories for ports and SQL dialects
   shared/              Browser API contracts
   server/api/          Same-origin proxy; Rust address stays server-side
 backend/src/
   domain.rs            Provider-neutral inputs, table/column/page models
   application.rs       Adapter contract, provider registry, sanitized errors
-  adapters/postgres.rs  PostgreSQL connection, metadata and read-only reads
+  adapters/postgres/    PostgreSQL connection, metadata, reads, writes and settings
+  adapters/mysql/       MySQL connection, metadata, read queries and write adapter
+  adapters/mariadb/     MariaDB registration and shared MySQL protocol adapter
+  adapters/sqlserver/   SQL Server TDS connection, metadata, read and write adapters
+  adapters/read_query.rs Shared SELECT validation and operation deadline
   adapters/demo.rs      Deterministic sample workspace
   adapters/vault.rs     SQLite storage with authenticated credential encryption
   sessions.rs          Bounded, expiring in-memory connection sessions
@@ -82,7 +124,7 @@ backend/src/
   main.rs              Process configuration and shutdown
 ```
 
-To add a database, implement `DatabaseAdapter`, register it in `router()`, and add any provider-specific form fields. Supported providers are fetched from `/api/providers`. Saved connections use a separate local SQLite application store behind the `ConnectionRepository` contract. Its schema initializes automatically; connected database schemas are never changed.
+To add a database, implement `DatabaseAdapter` in a dedicated adapter directory, register it in `router_with_repository()`, and add any provider-specific form fields. Supported providers are fetched from `/api/providers`. Saved connections use a separate local SQLite application store behind the `ConnectionRepository` contract. Its schema initializes automatically; connected database schemas are never changed.
 
 ## Commands and checks
 

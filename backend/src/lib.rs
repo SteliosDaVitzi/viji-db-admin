@@ -61,6 +61,9 @@ pub fn router_with_repository(
         DatabaseService::new(vec![
             Arc::new(adapters::postgres::PostgresAdapter),
             Arc::new(adapters::demo::DemoAdapter),
+            Arc::new(adapters::mysql::MySqlAdapter),
+            Arc::new(adapters::mariadb::MariaDbAdapter),
+            Arc::new(adapters::sqlserver::SqlServerAdapter),
         ]),
     )
 }
@@ -205,15 +208,13 @@ async fn connect(
         .try_acquire()
         .map_err(|_| AppError(ErrorKind::Busy, "Too many requests. Try again shortly."))?;
     input.validate().map_err(invalid)?;
-    if input.all_databases && input.provider != "postgres" {
-        return Err(invalid(
-            "Instance browsing is unavailable for this provider.",
-        ));
-    }
-    if input.all_databases {
-        input.database = "postgres".into();
-    }
     let adapter = state.database.resolve(&input.provider)?;
+    if input.all_databases {
+        input.database = adapter
+            .maintenance_database()
+            .ok_or_else(|| invalid("Instance browsing is unavailable for this provider."))?
+            .into();
+    }
     adapter.test(&input).await?;
     let info = session_info(&input);
     let id = state.sessions.insert(input, session_token(&headers))?;
@@ -430,6 +431,9 @@ mod tests {
     struct InstanceAdapter;
     #[async_trait::async_trait]
     impl DatabaseAdapter for InstanceAdapter {
+        fn maintenance_database(&self) -> Option<&'static str> {
+            Some("postgres")
+        }
         async fn update_settings(
             &self,
             input: &ConnectionInput,

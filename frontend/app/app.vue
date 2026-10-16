@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { providerOptions, quoteIdentifier } from './providers'
 import type { ColumnInfo, ConnectionInput, ContextAction, TableInfo } from '../shared/database'
 const db = useDatabase()
 const editor = ref<'insert' | 'delete' | 'schema' | null>(null)
@@ -8,9 +9,17 @@ const editingCell = ref<{
 } | null>(null)
 const editable = computed(
   () =>
-    session.value?.provider === 'postgres' &&
+    !!session.value &&
+    session.value.provider !== 'demo' &&
+    providerOptions(session.value.provider).editing &&
     !activeQuery.value &&
     selectedTable.value?.kind === 'BASE TABLE',
+)
+const recordEditable = computed(
+  () =>
+    editable.value &&
+    (session.value?.provider === 'postgres' ||
+      !!data.value?.columns.some((column) => column.primaryKey)),
 )
 const mutationNotice = ref('')
 const settingsOpen = ref(false)
@@ -42,7 +51,7 @@ function workspaceContext(event: MouseEvent) {
     },
     {
       label: 'Database settings',
-      disabled: !session.value || switching.value,
+      disabled: session.value?.provider !== 'postgres' || switching.value,
       run: () => {
         settingsOpen.value = true
       },
@@ -64,7 +73,9 @@ function tableContext(event: MouseEvent, table: TableInfo) {
     {
       label: 'Copy table name',
       run: () =>
-        copy(`"${table.schema.replaceAll('"', '""')}"."${table.name.replaceAll('"', '""')}"`),
+        copy(
+          `${quoteIdentifier(table.schema, session.value?.provider)}.${quoteIdentifier(table.name, session.value?.provider)}`,
+        ),
     },
     { label: 'Refresh explorer', disabled, run: db.refreshExplorer },
   ])
@@ -97,6 +108,7 @@ function rowContext(event: MouseEvent, index: number, column?: string) {
         },
       },
       {
+        disabled: !recordEditable.value,
         label: 'Delete row…',
         run: () => {
           editor.value = 'delete'
@@ -193,9 +205,8 @@ async function activateQuery(id: string) {
 }
 const connectionDialog = useTemplateRef<HTMLDialogElement>('connectionDialog')
 const initialSql = computed(() => {
-  const quote = (name: string) => `"${name.replaceAll('"', '""')}"`
   return selectedTable.value
-    ? `SELECT * FROM ${quote(selectedTable.value.schema)}.${quote(selectedTable.value.name)};`
+    ? `SELECT * FROM ${quoteIdentifier(selectedTable.value.schema, session.value?.provider)}.${quoteIdentifier(selectedTable.value.name, session.value?.provider)};`
     : 'SELECT 1 AS result;'
 })
 async function runQuery(sql: string) {
@@ -268,7 +279,7 @@ async function cellSaved() {
       <div class="header-actions">
         <span class="read-only"
           ><AppIcon name="lock" :size="13" />{{
-            session?.provider === 'postgres' ? 'Browse & edit' : 'Read only'
+            session && session.provider !== 'demo' ? 'Browse & edit' : 'Read only'
           }}</span
         ><button
           v-if="session"
@@ -298,8 +309,8 @@ async function cellSaved() {
                   ? session.provider === 'demo'
                     ? 'Sample workspace'
                     : session.allDatabases
-                      ? 'PostgreSQL instance'
-                      : `PostgreSQL · ${session.host}`
+                      ? `${providers.find((p) => p.id === session?.provider)?.name ?? session.provider} instance`
+                      : `${providers.find((p) => p.id === session?.provider)?.name ?? session.provider} / ${session.host}`
                   : 'Connect to get started'
               }}</span>
             </div>
@@ -318,6 +329,7 @@ async function cellSaved() {
               @update:model-value="db.switchDatabase($event)"
             />
             <button
+              v-if="session.provider === 'postgres'"
               class="icon-button database-settings-button"
               title="Database settings"
               aria-label="Database settings"
@@ -400,13 +412,14 @@ async function cellSaved() {
           @demo="demo"
         />
         <div class="welcome-footer">
-          <span>PostgreSQL, to start.</span><span>Built for a closer look.</span>
+          <span>PostgreSQL, MySQL, MariaDB & SQL Server.</span><span>Built for a closer look.</span>
         </div>
       </main>
       <main v-else class="database-main">
         <QueryEditor
           :key="queryWorkspaceKey"
           :initial-sql="initialSql"
+          :provider="session.provider"
           :busy="busy || switching"
           :active-query="activeQuery"
           :demo="session.provider === 'demo'"
@@ -420,9 +433,9 @@ async function cellSaved() {
           <AppIcon :name="activeQuery ? 'grid' : 'table'" :size="15" />
           <h1>{{ activeQuery ? 'Query results' : selectedTable?.name || 'Your database' }}</h1>
           <span class="table-subtitle"
-            >{{ session.database }} / {{ selectedTable?.schema || 'public' }}</span
+            >{{ session.database }} / {{ selectedTable?.schema || 'Tables' }}</span
           >
-          <div v-if="session.provider === 'postgres'" class="mutation-toolbar">
+          <div v-if="session.provider !== 'demo'" class="mutation-toolbar">
             <button
               v-if="editable"
               class="button secondary small"
@@ -484,7 +497,7 @@ async function cellSaved() {
           ></label>
           <div class="table-heading-actions">
             <button
-              v-if="editable && record && tab === 'data'"
+              v-if="recordEditable && record && tab === 'data'"
               class="button secondary small delete-row-button"
               :disabled="busy || switching"
               @click="editor = 'delete'"
@@ -662,7 +675,12 @@ async function cellSaved() {
       :column="editingCell.column"
       :row="editingCell.row"
       :table="selectedTable"
-      :editable="editable"
+      :editable="recordEditable"
+      :readonly-reason="
+        editable && !recordEditable
+          ? 'Updating records requires a primary key for this provider.'
+          : undefined
+      "
       :apply="db.applyMutation"
       @close="editingCell = null"
       @saved="cellSaved"
@@ -670,6 +688,7 @@ async function cellSaved() {
     <MutationDialog
       v-if="editor && session"
       :mode="editor"
+      :provider="session.provider"
       :table="selectedTable"
       :columns="data?.columns || []"
       :row="record"

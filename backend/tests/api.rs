@@ -230,3 +230,21 @@ async fn session_browsing_validation_and_disconnect() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn registry_advertises_real_database_providers() {
+    let response = webdb::router(false)
+        .oneshot(Request::get("/api/providers").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let providers: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let ids: Vec<_> = providers
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["demo", "mariadb", "mysql", "postgres", "sqlserver"]);
+}

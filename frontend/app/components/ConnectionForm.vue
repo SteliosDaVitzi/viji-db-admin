@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { providerOptions } from '../providers'
 import type { ConnectionInput, Provider, SavedConnection } from '../../shared/database'
 defineProps<{
   busy: boolean
@@ -26,6 +27,14 @@ const form = reactive<ConnectionInput>({
   ssl: true,
   allDatabases: false,
 })
+const options = computed(() => providerOptions(form.provider))
+watch(
+  () => form.provider,
+  () => {
+    form.port = options.value.port
+    form.password = ''
+  },
+)
 function submit() {
   emit('connect', {
     ...form,
@@ -115,7 +124,7 @@ function submit() {
     <p :id="instanceHintId" class="field-help">
       {{
         form.allDatabases
-          ? 'Discover databases your user can access, then choose one in the explorer. Connects through the postgres maintenance database.'
+          ? `Discover databases your user can access, then choose one in the explorer. Connects ${options.maintenance}.`
           : 'Connect to one database by name.'
       }}
     </p>
@@ -135,7 +144,7 @@ function submit() {
           required
           maxlength="128"
           autocomplete="username"
-          placeholder="postgres"
+          :placeholder="options.username"
           :disabled="busy" /></label
       ><label
         >Password<input

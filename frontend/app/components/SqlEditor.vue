@@ -10,12 +10,14 @@ import {
   closeBrackets,
   closeBracketsKeymap,
 } from '@codemirror/autocomplete'
-import { PostgreSQL, sql as sqlLanguage } from '@codemirror/lang-sql'
+import { sql as sqlLanguage } from '@codemirror/lang-sql'
+import { providerOptions } from '../providers'
 import { tags } from '@lezer/highlight'
 import type { TableInfo } from '../../shared/database'
-import { databaseCompletion, sqlSnippets } from '../utils/sqlCompletion'
+import { databaseCompletion, providerSnippets } from '../utils/sqlCompletion'
 
 const props = defineProps<{
+  provider?: string
   modelValue: string
   height: number
   tables: TableInfo[]
@@ -27,12 +29,13 @@ const language = new Compartment()
 let view: EditorView | undefined
 let tooltipLayer: HTMLDivElement | undefined
 function languageSupport() {
+  const dialect = providerOptions(props.provider ?? 'postgres').dialect
   return [
-    sqlLanguage({ dialect: PostgreSQL, upperCaseKeywords: true }),
-    PostgreSQL.language.data.of({
-      autocomplete: databaseCompletion(props.tables, props.selectedTable),
+    sqlLanguage({ dialect, upperCaseKeywords: true }),
+    dialect.language.data.of({
+      autocomplete: databaseCompletion(props.tables, props.selectedTable, props.provider),
     }),
-    PostgreSQL.language.data.of({ autocomplete: sqlSnippets }),
+    dialect.language.data.of({ autocomplete: providerSnippets(props.provider) }),
   ]
 }
 onMounted(() => {
@@ -147,7 +150,7 @@ watch(
   },
 )
 watch(
-  () => [props.tables, props.selectedTable],
+  () => [props.tables, props.selectedTable, props.provider],
   () => {
     view?.dispatch({ effects: language.reconfigure(languageSupport()) })
   },

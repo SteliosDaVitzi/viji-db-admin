@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TableInfo } from '../../shared/database'
 const props = defineProps<{
+  provider?: string
   initialSql: string
   busy: boolean
   activeQuery: string | null
@@ -358,6 +359,7 @@ function run() {
     </div>
     <div id="query-panel" class="query-panel" role="tabpanel" :aria-labelledby="`${activeId}-tab`">
       <SqlEditor
+        :provider="provider"
         :key="activeId"
         ref="editor"
         v-model="sql"

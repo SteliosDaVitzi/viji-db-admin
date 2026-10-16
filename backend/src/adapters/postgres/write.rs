@@ -1,4 +1,4 @@
-use super::postgres::{connect, quote_identifier};
+use super::{connect, quote_identifier};
 use crate::{application::*, domain::*};
 use sqlx::{Connection, Row};
 
