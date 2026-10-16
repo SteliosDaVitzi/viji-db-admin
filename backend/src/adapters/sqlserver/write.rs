@@ -5,11 +5,16 @@ use tiberius::Query;
 fn identifier(name: &str) -> AppResult<String> {
     super::super::write::identifier(name, 128, quote_identifier)
 }
-fn write_error(error: tiberius::error::Error) -> AppError {
-    invalid(match error.code() {
+fn write_message(code: Option<u32>) -> &'static str {
+    match code {
         Some(2601 | 2627) => "Unique constraint: that key or value already exists.",
         Some(547) => {
-            "Foreign key or CHECK constraint: check the value and referenced or dependent records."
+            "Foreign key or CHECK constraint violation: existing values conflict with the requested change or referenced data."
+        }
+        Some(1776) => "Foreign key target must be backed by a PRIMARY KEY or UNIQUE constraint.",
+        Some(1770) => "The selected referenced field does not exist.",
+        Some(1778) => {
+            "Foreign key field types are incompatible. Use matching data types for the source and referenced fields."
         }
         Some(515) => "Required field: provide a non-NULL value or a database default.",
         Some(245 | 248 | 8114 | 8115 | 8152 | 2628 | 241 | 242) => {
@@ -22,7 +27,10 @@ fn write_error(error: tiberius::error::Error) -> AppError {
         _ => {
             "SQL Server rejected the change. Check SQL syntax, generated columns, constraints, permissions, and the connection before retrying."
         }
-    })
+    }
+}
+fn write_error(error: tiberius::error::Error) -> AppError {
+    invalid(write_message(error.code()))
 }
 async fn command(client: &mut SqlClient, sql: &str) -> AppResult<()> {
     client
@@ -272,6 +280,15 @@ async fn apply(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn foreign_key_errors_explain_what_needs_to_change() {
+        assert!(write_message(Some(1776)).contains("PRIMARY KEY or UNIQUE"));
+        assert!(write_message(Some(1778)).contains("types are incompatible"));
+        assert!(write_message(Some(547)).contains("constraint violation"));
+        assert!(write_message(Some(99999)).contains("SQL Server rejected the change"));
+    }
+
     #[test]
     fn binary_parameters_validate_hex_and_bind_values() {
         let c = Column {

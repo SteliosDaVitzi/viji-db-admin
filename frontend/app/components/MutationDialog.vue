@@ -10,6 +10,8 @@ const props = defineProps<{
   database: string
   instance: boolean
   initialAction?: 'execute' | 'createDatabase'
+  initialSql?: string
+  schemaTitle?: string
   apply: (mutation: Mutation) => Promise<{ affectedRows: number }>
 }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
@@ -43,7 +45,8 @@ const identity =
       ? 'bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY'
       : 'bigint AUTO_INCREMENT PRIMARY KEY'
 const sql = ref(
-  `CREATE TABLE ${quote(defaultSchema)}.${quote('new_table')} (\n  ${quote('id')} ${identity},\n  ${quote('name')} varchar(255) NOT NULL\n);`,
+  props.initialSql ??
+    `CREATE TABLE ${quote(defaultSchema)}.${quote('new_table')} (\n  ${quote('id')} ${identity},\n  ${quote('name')} varchar(255) NOT NULL\n);`,
 )
 function text(value: unknown) {
   return value === null || value === undefined
@@ -73,7 +76,8 @@ const title = computed(
       insert: 'Insert record',
       update: 'Edit record',
       delete: 'Delete record',
-      schema: 'Database changes',
+      schema:
+        action.value === 'execute' ? (props.schemaTitle ?? 'Database changes') : 'Database changes',
     })[props.mode],
 )
 const target = computed(() =>
@@ -164,7 +168,14 @@ async function save() {
         </button>
       </div>
       <p class="muted">
-        {{ database }}<template v-if="mode !== 'schema'"> / {{ target }}</template>
+        {{ database
+        }}<template
+          v-if="
+            mode !== 'schema' || (table && action !== 'createDatabase' && action !== 'dropDatabase')
+          "
+        >
+          / {{ target }}</template
+        >
       </p>
       <template v-if="mode === 'schema'">
         <label

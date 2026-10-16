@@ -44,6 +44,15 @@ export interface ForeignKeyInfo {
   referencedTable: string
   referencedColumn: string
 }
+export interface RelationshipChange {
+  constraintName?: string
+  foreignSchema: string
+  foreignTable: string
+  foreignColumn: string
+  referencedSchema: string
+  referencedTable: string
+  referencedColumn: string
+}
 export interface ColumnInfo {
   name: string
   dataType: string

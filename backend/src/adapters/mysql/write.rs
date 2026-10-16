@@ -5,35 +5,50 @@ use sqlx::{Connection, MySqlConnection, Row};
 fn identifier(name: &str) -> AppResult<String> {
     super::super::write::identifier(name, 64, quote_identifier)
 }
-fn write_error(error: sqlx::Error) -> AppError {
-    let message = if let sqlx::Error::Database(db) = &error {
-        match db
-            .try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>()
-            .map(|error| error.number())
-        {
-            Some(1062) => "Unique constraint: that key or value already exists.",
-            Some(1451 | 1452 | 1216 | 1217) => {
-                "Foreign key constraint: check referenced and dependent records."
-            }
-            Some(1048 | 1364) => "Required field: provide a non-NULL value or a database default.",
-            Some(3819 | 4025) => "Check constraint: a value does not satisfy the table rules.",
-            Some(1205 | 1213) => {
-                "The change timed out or conflicted with another transaction. Refresh and try again."
-            }
-            Some(1044 | 1045 | 1142 | 1143) => {
-                "Permission denied. Ask for the required write privileges."
-            }
-            Some(1264 | 1265 | 1292 | 1366 | 1406) => {
-                "Invalid value for the column type. Check its format, range, and length."
-            }
-            _ => {
-                "The database rejected the change. Check SQL syntax, generated columns, constraints, and permissions."
-            }
+fn write_message(number: Option<u16>) -> &'static str {
+    match number {
+        Some(1062) => "Unique constraint: that key or value already exists.",
+        Some(1451 | 1217) => {
+            "Foreign key violation: another row still references the record being changed."
         }
-    } else {
-        "Database change failed. Check the connection before retrying."
-    };
-    invalid(message)
+        Some(1452 | 1216) => {
+            "Foreign key violation: existing rows contain values with no matching referenced row."
+        }
+        Some(1822) => {
+            "Foreign key target must have an index, typically a PRIMARY KEY or UNIQUE constraint."
+        }
+        Some(3780) => {
+            "Foreign key field types are incompatible. Use matching data types, sizes, and collations."
+        }
+        Some(1215 | 1005) => {
+            "Could not create the foreign key. Check that both fields have compatible types and indexes, and that both tables use a supported storage engine."
+        }
+        Some(1826) => "A foreign key constraint with that name already exists.",
+        Some(1072) => "The selected foreign key field does not exist.",
+        Some(1048 | 1364) => "Required field: provide a non-NULL value or a database default.",
+        Some(3819 | 4025) => "Check constraint: a value does not satisfy the table rules.",
+        Some(1205 | 1213) => {
+            "The change timed out or conflicted with another transaction. Refresh and try again."
+        }
+        Some(1044 | 1045 | 1142 | 1143) => {
+            "Permission denied. Ask for the required write privileges."
+        }
+        Some(1264 | 1265 | 1292 | 1366 | 1406) => {
+            "Invalid value for the column type. Check its format, range, and length."
+        }
+        _ => {
+            "The database rejected the change. Check SQL syntax, generated columns, constraints, and permissions."
+        }
+    }
+}
+fn write_error(error: sqlx::Error) -> AppError {
+    if let sqlx::Error::Database(db) = &error {
+        let number = db
+            .try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>()
+            .map(|error| error.number());
+        return invalid(write_message(number));
+    }
+    invalid("Database change failed. Check the connection before retrying.")
 }
 fn binary(column: &Column) -> bool {
     let typ = column.data_type.to_lowercase();
@@ -277,6 +292,15 @@ pub(crate) async fn mutate(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn foreign_key_errors_explain_what_needs_to_change() {
+        assert!(write_message(Some(1822)).contains("PRIMARY KEY or UNIQUE"));
+        assert!(write_message(Some(3780)).contains("types are incompatible"));
+        assert!(write_message(Some(1452)).contains("existing rows"));
+        assert!(write_message(Some(65535)).contains("database rejected the change"));
+    }
+
     #[test]
     fn numeric_keys_keep_the_native_precision() {
         let mut c = Column {

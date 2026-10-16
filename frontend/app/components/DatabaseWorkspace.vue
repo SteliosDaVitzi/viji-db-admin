@@ -1,11 +1,20 @@
 <script setup lang="ts">
 import { providerOptions, quoteIdentifier } from '../providers'
-import type { ColumnInfo, ConnectionInput, ContextAction, TableInfo } from '../../shared/database'
+import type {
+  ColumnInfo,
+  ConnectionInput,
+  ContextAction,
+  RelationshipChange,
+  TableInfo,
+} from '../../shared/database'
 const db = useDatabase()
 const workspaceTabs = useWorkspaceTabs(db)
 const { rowFilter, tab, tableTabs, activeView, activateQuery, runQuery } = workspaceTabs
 const editor = ref<'insert' | 'delete' | 'schema' | null>(null)
 const schemaAction = ref<'execute' | 'createDatabase'>('execute')
+const schemaTargetTable = ref<TableInfo | null>(null)
+const diagramTableEditor = ref<TableInfo | null | undefined>()
+const diagramMutationBusy = ref(false)
 const editingCell = ref<{
   row: Record<string, unknown>
   column: ColumnInfo
@@ -18,6 +27,13 @@ const editable = computed(
     providerOptions(session.value.provider).editing &&
     !workspaceTabs.queryActive.value &&
     selectedTable.value?.kind === 'BASE TABLE',
+)
+const schemaEditable = computed(
+  () =>
+    !!session.value &&
+    session.value.provider !== 'demo' &&
+    !session.value.readOnly &&
+    providerOptions(session.value.provider).editing,
 )
 const recordEditable = computed(
   () =>
@@ -138,9 +154,95 @@ async function mutationSaved() {
   explorerKey.value++
   await db.refreshExplorer()
 }
-function openSchemaEditor(action: 'execute' | 'createDatabase' = 'execute') {
+function openSchemaEditor(
+  action: 'execute' | 'createDatabase' = 'execute',
+  options: { table?: TableInfo | null } = {},
+) {
   schemaAction.value = action
+  schemaTargetTable.value = Object.hasOwn(options, 'table')
+    ? (options.table ?? null)
+    : selectedTable.value
   editor.value = 'schema'
+}
+function openDiagramTableEditor(table: TableInfo | null) {
+  diagramTableEditor.value = table
+}
+async function diagramTableSaved() {
+  const created = diagramTableEditor.value === null
+  diagramTableEditor.value = undefined
+  workspaceTabs.invalidate()
+  toast.show(created ? 'Table created successfully.' : 'Table fields updated successfully.')
+  explorerKey.value++
+  await db.refreshExplorer()
+}
+async function applyDiagramRelationship(relationship: RelationshipChange) {
+  const currentSession = session.value
+  if (!currentSession || !schemaEditable.value)
+    throw new Error('Schema changes are not available for this connection.')
+  if (diagramMutationBusy.value || busy.value || switching.value)
+    throw new Error('Wait for the current database operation to finish.')
+
+  diagramMutationBusy.value = true
+  try {
+    const quote = (identifier: string) => quoteIdentifier(identifier, currentSession.provider)
+    const constraint = `fk_${crypto.randomUUID().replaceAll('-', '').slice(0, 24)}`
+    const sql = `ALTER TABLE ${quote(relationship.foreignSchema)}.${quote(relationship.foreignTable)}\n  ADD CONSTRAINT ${quote(constraint)} FOREIGN KEY (${quote(relationship.foreignColumn)})\n  REFERENCES ${quote(relationship.referencedSchema)}.${quote(relationship.referencedTable)} (${quote(relationship.referencedColumn)});`
+    await db.applyMutation({ action: 'execute', sql })
+    await refreshDiagramSchema('Relationship created successfully.')
+  } finally {
+    diagramMutationBusy.value = false
+  }
+}
+function relationshipDropAction(constraintName: string, provider: string) {
+  return provider === 'mysql' || provider === 'mariadb'
+    ? `DROP FOREIGN KEY ${quoteIdentifier(constraintName, provider)}`
+    : `DROP CONSTRAINT ${quoteIdentifier(constraintName, provider)}`
+}
+async function updateDiagramRelationship(current: RelationshipChange, next: RelationshipChange) {
+  const currentSession = session.value
+  if (!currentSession || !schemaEditable.value)
+    throw new Error('Schema changes are not available for this connection.')
+  if (!current.constraintName) throw new Error('The relationship name is unavailable.')
+  if (diagramMutationBusy.value || busy.value || switching.value)
+    throw new Error('Wait for the current database operation to finish.')
+
+  diagramMutationBusy.value = true
+  try {
+    const provider = currentSession.provider
+    const quote = (identifier: string) => quoteIdentifier(identifier, provider)
+    const target = `${quote(current.foreignSchema)}.${quote(current.foreignTable)}`
+    const addConstraint = `ADD CONSTRAINT ${quote(current.constraintName)} FOREIGN KEY (${quote(next.foreignColumn)}) REFERENCES ${quote(next.referencedSchema)}.${quote(next.referencedTable)} (${quote(next.referencedColumn)})`
+    const sql = `ALTER TABLE ${target}\n  ${relationshipDropAction(current.constraintName, provider)},\n  ${addConstraint};`
+    await db.applyMutation({ action: 'execute', sql })
+    await refreshDiagramSchema('Relationship updated successfully.')
+  } finally {
+    diagramMutationBusy.value = false
+  }
+}
+async function removeDiagramRelationship(relationship: RelationshipChange) {
+  const currentSession = session.value
+  if (!currentSession || !schemaEditable.value)
+    throw new Error('Schema changes are not available for this connection.')
+  if (!relationship.constraintName) throw new Error('The relationship name is unavailable.')
+  if (diagramMutationBusy.value || busy.value || switching.value)
+    throw new Error('Wait for the current database operation to finish.')
+
+  diagramMutationBusy.value = true
+  try {
+    const quote = (identifier: string) => quoteIdentifier(identifier, currentSession.provider)
+    const target = `${quote(relationship.foreignSchema)}.${quote(relationship.foreignTable)}`
+    const sql = `ALTER TABLE ${target} ${relationshipDropAction(relationship.constraintName, currentSession.provider)};`
+    await db.applyMutation({ action: 'execute', sql })
+    await refreshDiagramSchema('Relationship removed successfully.')
+  } finally {
+    diagramMutationBusy.value = false
+  }
+}
+async function refreshDiagramSchema(message: string) {
+  workspaceTabs.invalidate()
+  toast.show(message)
+  explorerKey.value++
+  await db.refreshExplorer()
 }
 const {
   providers,
@@ -170,6 +272,7 @@ const queryWorkspaceKey = ref(0)
 watch(session, () => {
   settingsOpen.value = false
   schemaDiagramOpen.value = false
+  diagramTableEditor.value = undefined
   context.value = null
   editingCell.value = null
   editor.value = null
@@ -379,10 +482,10 @@ async function cellSaved() {
           :loading="tablesLoading"
           :active-database="session.database"
           :selected-table="selectedTable"
-          :disabled="connecting || switching || busy"
-          :can-create-table="session.provider !== 'demo' && !session.readOnly"
+          :disabled="connecting || switching || busy || diagramMutationBusy"
+          :can-create-table="schemaEditable"
           @choose="workspaceTabs.chooseDatabaseTable"
-          @create-table="openSchemaEditor('execute')"
+          @create-table="openDiagramTableEditor(null)"
           @refresh="db.refreshExplorer"
           @context="tableContext"
           @schema-context="schemaContext"
@@ -716,8 +819,24 @@ async function cellSaved() {
       :tables="tables"
       :selected-table="selectedTable"
       :loading="tablesLoading"
+      :editable="schemaEditable"
+      :disabled="connecting || switching || tablesLoading || busy || diagramMutationBusy"
+      :apply-relationship="applyDiagramRelationship"
+      :update-relationship="updateDiagramRelationship"
+      :remove-relationship="removeDiagramRelationship"
       @choose="workspaceTabs.chooseDatabaseTable(session.database, $event)"
+      @create-table="openDiagramTableEditor(null)"
+      @edit-table="openDiagramTableEditor"
       @close="schemaDiagramOpen = false"
+    />
+    <SchemaTableEditor
+      v-if="session && diagramTableEditor !== undefined"
+      :provider="session.provider"
+      :database="session.database"
+      :table="diagramTableEditor"
+      :apply="db.applyMutation"
+      @close="diagramTableEditor = undefined"
+      @saved="diagramTableSaved"
     />
     <CellEditor
       v-if="editingCell"
@@ -738,7 +857,7 @@ async function cellSaved() {
       v-if="editor && session"
       :mode="editor"
       :provider="session.provider"
-      :table="selectedTable"
+      :table="editor === 'schema' ? schemaTargetTable : selectedTable"
       :columns="data?.columns || []"
       :row="record"
       :database="session.database"

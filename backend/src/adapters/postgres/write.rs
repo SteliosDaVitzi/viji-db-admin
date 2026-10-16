@@ -11,38 +11,50 @@ fn identifier(name: &str) -> AppResult<String> {
     Ok(quote_identifier(name))
 }
 
+fn write_message(code: Option<&str>) -> &'static str {
+    match code {
+        Some("23503") => {
+            "Foreign key violation: existing rows contain values with no matching referenced row, or a referenced row is still in use."
+        }
+        Some("23505") => "Unique constraint: that key or value already exists.",
+        Some("23502") => "Required field: a NOT NULL column needs a value or a default.",
+        Some("23514") => "Check constraint: a value does not satisfy the table's rules.",
+        Some("23P01") => "Exclusion constraint: this value conflicts with an existing record.",
+        Some("42501") => {
+            "Permission denied. Ask your database administrator for the required write privileges."
+        }
+        Some("2BP01") => {
+            "Other objects depend on this object. Remove those dependencies explicitly first."
+        }
+        Some("55006") => "The database is in use. Disconnect its clients before dropping it.",
+        Some("42830") => "Foreign key target must be backed by a PRIMARY KEY or UNIQUE constraint.",
+        Some("42804") => {
+            "Foreign key field types are incompatible. Use matching data types for the source and referenced fields."
+        }
+        Some("42601") => {
+            "The database rejected the generated SQL syntax. Check the selected fields and provider compatibility."
+        }
+        Some("42809") => "The selected foreign key target is not a referenceable table or field.",
+        Some("42710") => "A constraint with that name already exists.",
+        Some("42P04" | "42P07") => "An object with that name already exists.",
+        Some("42P01" | "42703" | "3D000") => {
+            "The database, table, or column no longer exists. Refresh the explorer."
+        }
+        Some("57014" | "55P03" | "40P01" | "40001") => {
+            "The change timed out or conflicted with another transaction. Refresh and try again."
+        }
+        Some(code) if code.starts_with("22") => {
+            "Invalid value for the column type. Check its format, range, and length."
+        }
+        _ => {
+            "The database rejected the change. Check SQL syntax, generated columns, constraints, and permissions."
+        }
+    }
+}
+
 fn write_error(error: sqlx::Error) -> AppError {
     if let sqlx::Error::Database(db) = &error {
-        let message = match db.code().as_deref() {
-            Some("23503") => {
-                "Foreign key constraint: choose an existing referenced value or remove dependent records first."
-            }
-            Some("23505") => "Unique constraint: that key or value already exists.",
-            Some("23502") => "Required field: a NOT NULL column needs a value or a default.",
-            Some("23514") => "Check constraint: a value does not satisfy the table's rules.",
-            Some("23P01") => "Exclusion constraint: this value conflicts with an existing record.",
-            Some("42501") => {
-                "Permission denied. Ask your database administrator for the required write privileges."
-            }
-            Some("2BP01") => {
-                "Other objects depend on this object. Remove those dependencies explicitly first."
-            }
-            Some("55006") => "The database is in use. Disconnect its clients before dropping it.",
-            Some("42P04" | "42P07" | "42710") => "An object with that name already exists.",
-            Some("42P01" | "42703" | "3D000") => {
-                "The database, table, or column no longer exists. Refresh the explorer."
-            }
-            Some("57014" | "55P03" | "40P01" | "40001") => {
-                "The change timed out or conflicted with another transaction. Refresh and try again."
-            }
-            Some(code) if code.starts_with("22") => {
-                "Invalid value for the column type. Check its format, range, and length."
-            }
-            _ => {
-                "The database rejected the change. Check SQL syntax, generated columns, constraints, and permissions."
-            }
-        };
-        return invalid(message);
+        return invalid(write_message(db.code().as_deref()));
     }
     error.into()
 }
@@ -319,6 +331,15 @@ pub(super) async fn mutate(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn foreign_key_errors_explain_what_needs_to_change() {
+        assert!(write_message(Some("42830")).contains("PRIMARY KEY or UNIQUE"));
+        assert!(write_message(Some("42804")).contains("types are incompatible"));
+        assert!(write_message(Some("23503")).contains("existing rows"));
+        assert!(write_message(Some("unknown")).contains("database rejected the change"));
+    }
+
     #[test]
     fn identifiers_are_validated_and_quoted() {
         assert_eq!(identifier("a\";--").unwrap(), "\"a\"\";--\"");
