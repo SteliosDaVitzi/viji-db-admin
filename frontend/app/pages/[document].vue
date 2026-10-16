@@ -32,6 +32,9 @@ useHead(() => ({ title: `${document.value.title} — WebDB` }))
       <p>
         Contact: <a :href="`mailto:${privacyConfig.email}`">{{ privacyConfig.email }}</a>
       </p>
+      <p>
+        <a href="https://github.com/SteliosDaVitzi/web-db-tool">Source code and MIT license</a>
+      </p>
       <p v-if="route.params.document === 'privacy'" class="legal-sources">
         Learn more:
         <a

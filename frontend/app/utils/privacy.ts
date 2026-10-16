@@ -1,9 +1,7 @@
 export const privacyConfig = {
-  owner: 'Styliannos Vitzilaios',
-  address: 'Sitakis 55, Athens, Greece, 11142',
   email: 'steliosvitzi@gmail.com',
-  updated: '16 October 2026',
-  version: 1,
+  updated: '17 October 2026',
+  version: 2,
   storageKey: 'webdb.privacy-notice.v1',
   retentionDays: 180,
 }
@@ -29,7 +27,7 @@ export const legalDocuments = {
     sections: [
       [
         'Who operates WebDB',
-        `WebDB is a Vijitek tool operated by ${privacyConfig.owner}, ${privacyConfig.address}. Contact ${privacyConfig.email} for privacy questions. If you use a separately hosted installation, its operator is responsible for that deployment and its infrastructure.`,
+        'WebDB is open-source software that you can run locally or self-host. The person or organization running an installation controls its server, connection store, and infrastructure. Project maintainers do not receive your database content through the software. Contact the installation operator for questions about that deployment.',
       ],
       [
         'Database connections and content',
@@ -45,7 +43,7 @@ export const legalDocuments = {
       ],
       [
         'Purposes and legal grounds',
-        'Connection and query data are processed to provide the database operations you request. Where personal data are involved, the relevant legal basis depends on the relationship and deployment: performance of a requested service or legitimate interests in operating and securing that service. Infrastructure providers may process IP addresses, request times, and technical connection information to deliver and protect the site. Contact the installation operator for its logging and retention details.',
+        'Connection and query data are processed to provide the database operations you request. Installation operators are responsible for identifying and documenting any applicable legal basis for processing personal data. Infrastructure providers may process IP addresses, request times, and technical connection information. Contact the installation operator for its privacy notice, logging, and retention details. This software notice does not certify a deployment as compliant with data-protection law.',
       ],
       [
         'Recipients and international transfers',
@@ -53,11 +51,11 @@ export const legalDocuments = {
       ],
       [
         'Your GDPR rights',
-        'Where applicable, you may request access, correction, erasure, restriction, portability, or object to processing. Where processing relies on consent, you may withdraw it without affecting earlier lawful processing. Contact the operator using the address below; do not send credentials or database records with your request. We respond without undue delay, normally within one month; permitted extensions will be explained. You may complain to the Hellenic Data Protection Authority (dpa.gr) or your local supervisory authority. WebDB does not use your data for automated decisions or profiling.',
+        'Applicable data-protection rights and the process for exercising them depend on your jurisdiction and the installation. Contact the installation operator or the organization responsible for the data; do not send credentials or database records to project maintainers. The operator must provide any legally required privacy disclosures and request procedures. WebDB includes no automated decision-making or profiling feature.',
       ],
       [
         'Control and contact',
-        `Remove saved queries in the query library, remove saved connections on the connection screen, disconnect sessions, and clear your notice preference through Privacy settings in the footer. For data held by your database or a separate deployment, contact its operator. For this Vijitek tool, write to ${privacyConfig.email}.`,
+        `Remove saved queries in the query library, remove saved connections on the connection screen, disconnect sessions, and clear your notice preference through Privacy settings in the footer. For data held by your database or a separate deployment, contact its operator. For questions about the software itself, write to ${privacyConfig.email}.`,
       ],
     ],
   },
@@ -67,7 +65,11 @@ export const legalDocuments = {
     sections: [
       [
         'Operator and scope',
-        `WebDB is provided as a Vijitek tool by ${privacyConfig.owner}, ${privacyConfig.address}. Questions about these terms can be sent to ${privacyConfig.email}. These terms apply to use of this tool; a separately hosted installation may have additional terms from its operator.`,
+        'WebDB is a local, single-user database tool with no built-in multi-user authentication or per-user authorization. Keep the backend private. Installation operators are responsible for access controls and any additional terms for their hosted service.',
+      ],
+      [
+        'Open-source license',
+        'WebDB source code is distributed under the MIT license, including its warranty disclaimer and limitation of liability. These usage notes do not restrict the rights granted by that license. Third-party dependencies retain their own licenses. The full license and notices are included in the project repository.',
       ],
       [
         'Authorized use',
@@ -83,7 +85,7 @@ export const legalDocuments = {
       ],
       [
         'Availability and accuracy',
-        'WebDB is provided as available. Features, compatibility, availability, and displayed results may change or contain errors. Verify important results independently before relying on them. To the extent permitted by applicable law, no promise is made that the service will be uninterrupted, error-free, or suitable for every purpose.',
+        'WebDB is provided as is, without warranty, as set out in the MIT license. Features, compatibility, availability, and displayed results may change or contain errors. Verify important results independently. There is no guaranteed support, maintenance schedule, security certification, or fitness for a particular purpose.',
       ],
       [
         'Responsibility and statutory rights',
@@ -91,7 +93,7 @@ export const legalDocuments = {
       ],
       [
         'Privacy, third parties, and changes',
-        'The Privacy policy explains how the tool handles data. Third-party database and hosting services are subject to their own terms. We may update these terms as the tool changes; the date above identifies the current version. Greek law applies to the extent permitted by law, without removing mandatory protections or rights to bring proceedings available in your country.',
+        'The Privacy policy explains how the software handles data. Third-party database and hosting services are subject to their own terms. Installation operators must provide any required deployment-specific disclosures. These notes may change as the software changes; the date above identifies the current version.',
       ],
     ],
   },

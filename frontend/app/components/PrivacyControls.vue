@@ -77,7 +77,7 @@ onMounted(() => {
       notice for 180 days on this browser.
     </p>
     <div class="privacy-policy-links">
-      <NuxtLink to="/privacy" @click="dialog?.close()">Privacy policy &amp; GDPR rights</NuxtLink>
+      <NuxtLink to="/privacy" @click="dialog?.close()">Privacy policy &amp; data rights</NuxtLink>
       <NuxtLink to="/terms" @click="dialog?.close()">Terms of use</NuxtLink>
     </div>
     <div class="privacy-actions">

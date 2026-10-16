@@ -17,3 +17,14 @@ backend/target-validation/
 *.sqlite-*
 *.sqlite3
 *.sqlite3-*
+# Local credentials, certificates, database exports, and editor state
+*.pem
+*.key
+*.p12
+*.pfx
+*.dump
+*.bak
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -2,3 +2,7 @@ node_modules
 .nuxt
 .output
 .env*
+*.pem
+*.key
+*.p12
+*.pfx

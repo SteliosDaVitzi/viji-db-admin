@@ -1,6 +1,7 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-10-16',
   devtools: { enabled: false },
+  telemetry: false,
   devServer: { port: 34616 },
   css: ['~/assets/main.css'],
   typescript: { strict: true },

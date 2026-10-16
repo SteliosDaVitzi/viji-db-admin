@@ -1,5 +1,16 @@
 # WebDB
 
+A local, single-user database administration tool. **Early development:** APIs and
+stored formats may change, and no stable release or support schedule is promised.
+Keep the API private and back up databases before making changes. Writes commit
+immediately and may be irreversible. Database permissions are the security boundary;
+use a SELECT-only account for browsing. TLS is disabled by default: enable verified
+TLS before sending credentials over an untrusted network.
+
+[Contributing](CONTRIBUTING.md) ? [Security](SECURITY.md) ?
+[License](LICENSE) ? [Third-party notices](THIRD_PARTY_NOTICES.md) ?
+[Release audit](docs/open-source-readiness.md)
+
 A database workspace with a Nuxt 4 / Vue 3 / TypeScript interface and a Rust / Axum backend. PostgreSQL supports browsing, record editing, and schema changes. MySQL, MariaDB, and SQL Server support browsing, record editing, and explicit schema changes. A clearly labeled read-only sample workspace works without a database.
 
 ## Database providers
@@ -53,7 +64,7 @@ Write integration tests are opt-in: set `WEBDB_TEST_CONNECTION_JSON` to a Connec
 
 The interface has a table explorer, sortable and paginated rows, a filter for the current page, column metadata, a record inspector, clipboard copying, and current-page JSON export. Surfaces use contrast and shadows; keyboard focus uses a visible light halo.
 
-The full-width query workspace sits above the table section. Use **+** to open independent query tabs; each tab retains its draft and result page during the current connection. The editor has a scrolling line-number gutter. Click **Run** or press **Ctrl/⌘ + Enter** to run a single read-only SELECT (including CTEs, joins, and aggregates on PostgreSQL). Below it, a compact title and one toolbar hold the table views, filter, refresh, JSON export, and pagination. Results retain cell selection and a compact read-only value dialog on double-click; put ordering in your SQL. **Back to table** restores normal browsing. An ending semicolon is optional; output columns must have unique names, so alias duplicate names in joins. Queries have a 12,000-byte limit, a 10-second statement timeout, and up to 100 result rows per page. Page navigation reruns the executed query; use an explicit ORDER BY for predictable paging.
+The full-width query workspace sits above the table section. Use **+** to open independent query tabs; each tab retains its draft and result page during the current connection. The editor has a scrolling line-number gutter. Click **Run** or press **Ctrl/⌘ + Enter** to run a single read-only SELECT (including CTEs, joins, and aggregates on PostgreSQL). Below it, a compact title and one toolbar hold the table views, filter, refresh, JSON export, and pagination. Results retain cell selection and a compact read-only value dialog on double-click; put ordering in your SQL. **Back to table** restores normal browsing. An ending semicolon is optional; output columns must have unique names, so alias duplicate names in joins. Queries have a 12,000-byte limit, a 10-second statement timeout, and up to 1,000 result rows per page. Page navigation reruns the executed query; use an explicit ORDER BY for predictable paging.
 
 Use **Save** to name a query, **Saved** to open it in its own tab, and **Update** to change its name or SQL. Opening an already open saved query switches to its tab and preserves any draft edits. The saved list lets you remove queries. Saved queries persist only in this browser's local storage (up to 100); loading never executes them. Connection credentials and result rows are not stored with them. Avoid putting secrets in saved SQL. The sample workspace supports `SELECT * FROM public.customers` (also `orders` and `products`) with an optional `LIMIT`; connect PostgreSQL for full SQL support.
 
@@ -63,7 +74,7 @@ The gear beside the selected database opens tabbed PostgreSQL settings: General,
 
 The settings integration test is opt-in and requires `WEBDB_TEST_CONNECTION_JSON` pointing to an explicitly disposable PostgreSQL instance whose test user has CREATEDB. Run `cargo test --manifest-path backend/Cargo.toml --test postgres_settings -- --ignored`. It creates and drops its own randomly named database and checks saved defaults, resets, rollback, stale values, and SQL quoting.
 
-Requires Node.js 24.11+ and Rust 1.95+. Docker is optional.
+Requires Node.js 24 LTS (24.11+) and Rust 1.95+. Docker is optional.
 
 ```sh
 npm --prefix frontend ci
@@ -188,8 +199,23 @@ All scripts support `--help`. `migrate` reports that the SQLite connection-store
 
 WebDB is a local, single-user tool. The browser sends credentials only to the local API through the Nuxt proxy; no third-party services, font CDNs, analytics, or persistent browser credential storage are used. Password fields clear on submission. Unless you opt into saving a connection, credentials stay in bounded server memory, expire after eight hours, and are removed on disconnect or process exit; a periodic cleanup removes expired entries within a minute. Sessions use random opaque IDs in `HttpOnly`, `SameSite=Strict` cookies. Refreshing the page restores a valid session without returning its password.
 
-Queries use read-only transactions, statement and lock timeouts, quoted identifiers, bound parameters, and at most 100 rows per page. Use a PostgreSQL account with only the necessary privileges; browsing needs `SELECT`, while explicit editing requires corresponding write privileges. Large integers and decimals are returned as strings. JSON and array columns retain their database text representation to preserve nested numeric precision. Sorting uses native database values. Pagination is offset-based: concurrent changes can shift rows, and views without a sortable unique key have no guaranteed stable order. Large cell contents are returned in full; page size is not a response-byte limit.
+Browsing uses query validation (plus read-only transactions where supported), statement and lock timeouts, quoted identifiers, bound parameters, and at most 1,000 rows per page. Use a PostgreSQL account with only the necessary privileges; browsing needs `SELECT`, while explicit editing requires corresponding write privileges. Large integers and decimals are returned as strings. JSON and array columns retain their database text representation to preserve nested numeric precision. Sorting uses native database values. Pagination is offset-based: concurrent changes can shift rows, and views without a sortable unique key have no guaranteed stable order. Large cell contents are returned in full; page size is not a response-byte limit.
 
 Keep the API private. Remote/multi-user deployment requires an authenticated entrypoint, HTTPS, network access controls for target databases, and `WEBDB_SECURE_COOKIES=true`. Because connecting to private database hosts is an intentional feature, the API must not be exposed as an unauthenticated public connection proxy. Behind an HTTPS reverse proxy, pass the original Host and `X-Forwarded-Proto` consistently so same-origin validation matches the public URL. Configure `NUXT_API_BASE` for the private backend address. Run `WEBDB_BIND=0.0.0.0:34617` only on an appropriately isolated network.
 
-See [SECURITY.md](SECURITY.md) for the measured dependency audit status and remaining upstream blockers. A clean dependency scan cannot guarantee the absence of all vulnerabilities.
+See [SECURITY.md](SECURITY.md) for vulnerability reporting, scope, and dated dependency scan results. A clean dependency scan cannot guarantee the absence of all vulnerabilities.
+
+## License and responsibility
+
+Original WebDB code and documentation are available under the [MIT license](LICENSE),
+including its warranty disclaimer and limitation of liability. Third-party packages
+and assets retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The license does not grant trademark rights or imply endorsement by database vendors.
+
+Use only databases you are authorized to access. You control the queries, changes,
+exports, and credentials you submit. Keep backups and verify important results.
+WebDB is provided as is, without guaranteed support, fitness for a particular purpose,
+or security or regulatory certification. Installation operators must provide any
+privacy disclosures, legal grounds, retention policies, and access controls required
+for their own deployment. The in-app privacy notice describes software behavior;
+it is not a complete privacy policy for every hosting arrangement.

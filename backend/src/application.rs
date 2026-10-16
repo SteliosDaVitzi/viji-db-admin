@@ -20,6 +20,8 @@ pub fn invalid(message: &'static str) -> AppError {
 }
 
 #[async_trait]
+/// Provider boundary: keep browsing read only, bound request cost, and replace
+/// driver details with safe errors. Database privileges remain the security boundary.
 pub trait DatabaseAdapter: Send + Sync {
     async fn update_settings(
         &self,
@@ -57,6 +59,7 @@ pub trait DatabaseAdapter: Send + Sync {
 }
 
 #[async_trait]
+/// Installation-wide storage: encrypt credentials at rest and list only labels.
 pub trait ConnectionRepository: Send + Sync {
     async fn list(&self) -> AppResult<Vec<SavedConnection>>;
     async fn save(&self, name: &str, input: &ConnectionInput) -> AppResult<()>;
