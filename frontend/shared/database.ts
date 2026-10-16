@@ -63,7 +63,25 @@ export interface DatabaseSettings {
   provider: string
   database: string
   properties: Record<string, unknown>
-  settings: Record<string, unknown>[]
+  settings: DatabaseSetting[]
+  canEdit: boolean
+}
+export interface DatabaseSetting {
+  name: string
+  setting: string | null
+  databaseValue: string | null
+  editable: boolean
+  databaseScoped: boolean
+  unit: string | null
+  category: string
+  short_desc: string
+  context: string
+  vartype: string
+  min_val: string | null
+  max_val: string | null
+  enumvals: string[] | null
+  pending_restart: boolean
+  source: string
 }
 export interface ContextAction {
   label: string

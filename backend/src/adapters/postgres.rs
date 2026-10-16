@@ -8,11 +8,8 @@ use std::{str::FromStr, time::Duration};
 
 pub struct PostgresAdapter;
 
-fn redact_setting(mut setting: serde_json::Value) -> serde_json::Value {
-    let name = setting["name"].as_str().unwrap_or_default().to_lowercase();
-    // Connection strings and shell commands can embed credentials, even when
-    // PostgreSQL grants this user permission to inspect their values.
-    if [
+pub(super) fn sensitive_setting(name: &str) -> bool {
+    [
         "password",
         "secret",
         "token",
@@ -21,9 +18,15 @@ fn redact_setting(mut setting: serde_json::Value) -> serde_json::Value {
         "command",
     ]
     .iter()
-    .any(|part| name.contains(part))
-    {
-        for field in ["setting", "boot_val", "reset_val"] {
+    .any(|part| name.to_lowercase().contains(part))
+}
+
+fn redact_setting(mut setting: serde_json::Value) -> serde_json::Value {
+    let name = setting["name"].as_str().unwrap_or_default().to_lowercase();
+    // Connection strings and shell commands can embed credentials, even when
+    // PostgreSQL grants this user permission to inspect their values.
+    if sensitive_setting(&name) {
+        for field in ["setting", "boot_val", "reset_val", "databaseValue"] {
             setting[field] = "[redacted]".into();
         }
     }
@@ -135,6 +138,13 @@ async fn begin(connection: &mut PgConnection) -> AppResult<sqlx::Transaction<'_,
 
 #[async_trait]
 impl DatabaseAdapter for PostgresAdapter {
+    async fn update_settings(
+        &self,
+        input: &ConnectionInput,
+        request: &UpdateDatabaseSettings,
+    ) -> AppResult<()> {
+        super::postgres_settings::update(input, request).await
+    }
     async fn settings(&self, input: &ConnectionInput) -> AppResult<DatabaseSettings> {
         let mut connection = connect(input).await?;
         let mut tx = connection.begin().await?;
@@ -143,7 +153,7 @@ impl DatabaseAdapter for PostgresAdapter {
             .await?;
         // Read the effective configuration before applying our own timeout overrides.
         let settings: Vec<serde_json::Value> = tokio::time::timeout(Duration::from_secs(10), sqlx::query_scalar(
-            "SELECT to_jsonb(s) - 'sourcefile' - 'sourceline' FROM pg_settings s ORDER BY category, name"
+            "SELECT (to_jsonb(s) - 'sourcefile' - 'sourceline') || jsonb_build_object('databaseValue', (SELECT substr(config, strpos(config, '=') + 1) FROM pg_db_role_setting dr CROSS JOIN LATERAL unnest(dr.setconfig) config WHERE dr.setdatabase = (SELECT oid FROM pg_database WHERE datname = current_database()) AND dr.setrole = 0 AND split_part(config, '=', 1) = s.name)) FROM pg_settings s ORDER BY category, name"
         ).fetch_all(&mut *tx)).await.map_err(|_| AppError(ErrorKind::Timeout, "Reading database settings timed out. Try again."))??;
         sqlx::query("SET LOCAL statement_timeout = '10s'")
             .execute(&mut *tx)
@@ -154,12 +164,32 @@ impl DatabaseAdapter for PostgresAdapter {
         let properties: serde_json::Value = sqlx::query_scalar(
             "SELECT to_jsonb(d) || jsonb_build_object('owner', pg_get_userbyid(datdba), 'encoding', pg_encoding_to_char(encoding), 'tablespace', (SELECT spcname FROM pg_tablespace WHERE oid = d.dattablespace)) FROM pg_database d WHERE datname = current_database()"
         ).fetch_one(&mut *tx).await?;
+        let (can_edit, superuser) = super::postgres_settings::permissions(&mut tx).await?;
         tx.rollback().await?;
         Ok(DatabaseSettings {
             provider: input.provider.clone(),
             database: input.database.clone(),
             properties: properties.as_object().cloned().unwrap_or_default(),
-            settings: settings.into_iter().map(redact_setting).collect(),
+            settings: settings
+                .into_iter()
+                .map(|mut setting| {
+                    setting["databaseScoped"] = super::postgres_settings::editable(
+                        setting["name"].as_str().unwrap_or_default(),
+                        setting["context"].as_str().unwrap_or_default(),
+                        true,
+                    )
+                    .into();
+                    setting["editable"] = (can_edit
+                        && super::postgres_settings::editable(
+                            setting["name"].as_str().unwrap_or_default(),
+                            setting["context"].as_str().unwrap_or_default(),
+                            superuser,
+                        ))
+                    .into();
+                    redact_setting(setting)
+                })
+                .collect(),
+            can_edit,
         })
     }
     async fn mutate(

@@ -8,6 +8,55 @@ pub struct DatabaseSettings {
     pub database: String,
     pub properties: Map<String, Value>,
     pub settings: Vec<Value>,
+    pub can_edit: bool,
+}
+
+#[derive(Deserialize)]
+pub struct SettingChange {
+    pub value: Option<String>,
+    pub expected: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateDatabaseSettings {
+    pub database: String,
+    pub confirmation: String,
+    #[serde(default)]
+    pub changes: std::collections::BTreeMap<String, SettingChange>,
+    pub connection_limit: Option<i32>,
+    pub expected_connection_limit: Option<i32>,
+}
+
+impl UpdateDatabaseSettings {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.confirmation != "APPLY" || self.database.is_empty() || self.database.len() > 128 {
+            return Err("Review and save settings for the selected database.");
+        }
+        if self.changes.len() + usize::from(self.connection_limit.is_some()) > 50
+            || (self.changes.is_empty() && self.connection_limit.is_none())
+        {
+            return Err("Save between 1 and 50 changes at a time.");
+        }
+        if self.connection_limit.is_some_and(|limit| limit < -1)
+            || (self.connection_limit.is_some() && self.expected_connection_limit.is_none())
+        {
+            return Err("Enter a connection limit of -1 or greater.");
+        }
+        for (name, change) in &self.changes {
+            if name.is_empty()
+                || name.len() > 128
+                || name.chars().any(char::is_control)
+                || [change.value.as_deref(), change.expected.as_deref()]
+                    .into_iter()
+                    .flatten()
+                    .any(|value| value.len() > 4096 || value.contains('\0'))
+            {
+                return Err("Invalid setting name or value. Values must be at most 4096 bytes.");
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Writes are deliberately separate from browsing and read-only SQL.

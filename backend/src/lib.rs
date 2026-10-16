@@ -93,7 +93,10 @@ fn router_with_services(
             get(|| async { Json(serde_json::json!({"status":"ok"})) }),
         )
         .route("/api/providers", get(providers))
-        .route("/api/database-settings", get(database_settings))
+        .route(
+            "/api/database-settings",
+            get(database_settings).patch(update_database_settings),
+        )
         .route(
             "/api/session",
             post(connect).get(current_session).delete(disconnect),
@@ -147,6 +150,30 @@ async fn database_settings(
             .settings(&input)
             .await?,
     ))
+}
+
+async fn update_database_settings(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    Json(request): Json<UpdateDatabaseSettings>,
+) -> AppResult<StatusCode> {
+    let input = state.sessions.get(session_token(&headers))?;
+    request.validate().map_err(invalid)?;
+    if request.database != input.database {
+        return Err(invalid(
+            "The selected database changed. Reopen settings before saving.",
+        ));
+    }
+    let _permit = state
+        .operations
+        .try_acquire()
+        .map_err(|_| AppError(ErrorKind::Busy, "Too many requests. Try again shortly."))?;
+    state
+        .database
+        .resolve(&input.provider)?
+        .update_settings(&input, &request)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn session_info(input: &ConnectionInput) -> serde_json::Value {
@@ -403,12 +430,22 @@ mod tests {
     struct InstanceAdapter;
     #[async_trait::async_trait]
     impl DatabaseAdapter for InstanceAdapter {
+        async fn update_settings(
+            &self,
+            input: &ConnectionInput,
+            request: &UpdateDatabaseSettings,
+        ) -> AppResult<()> {
+            assert_eq!(request.database, input.database);
+            assert_eq!(request.changes["work_mem"].value.as_deref(), Some("16MB"));
+            Ok(())
+        }
         async fn settings(&self, input: &ConnectionInput) -> AppResult<DatabaseSettings> {
             Ok(DatabaseSettings {
                 provider: input.provider.clone(),
                 database: input.database.clone(),
                 properties: serde_json::Map::new(),
                 settings: vec![],
+                can_edit: false,
             })
         }
         fn provider(&self) -> Provider {
@@ -602,6 +639,47 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(settings["database"], "app\"db");
         assert_eq!(settings["provider"], "postgres");
+        let patch = serde_json::json!({"database":"app\"db","confirmation":"APPLY","changes":{"work_mem":{"value":"16MB","expected":null}}});
+        assert_eq!(
+            call(
+                &app,
+                "PATCH",
+                "/api/database-settings",
+                &next,
+                patch.clone()
+            )
+            .await
+            .0,
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            call(&app, "PATCH", "/api/database-settings", "", patch.clone())
+                .await
+                .0,
+            StatusCode::UNAUTHORIZED
+        );
+        let mut wrong_database = patch.clone();
+        wrong_database["database"] = "postgres".into();
+        assert_eq!(
+            call(
+                &app,
+                "PATCH",
+                "/api/database-settings",
+                &next,
+                wrong_database
+            )
+            .await
+            .0,
+            StatusCode::BAD_REQUEST
+        );
+        let mut unconfirmed = patch;
+        unconfirmed["confirmation"] = "".into();
+        assert_eq!(
+            call(&app, "PATCH", "/api/database-settings", &next, unconfirmed)
+                .await
+                .0,
+            StatusCode::BAD_REQUEST
+        );
         assert!(!settings.to_string().contains("private-password"));
         assert_eq!(
             call(

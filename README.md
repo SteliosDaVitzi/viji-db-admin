@@ -22,6 +22,10 @@ Use **Save** to name a query, **Saved** to open it in its own tab, and **Update*
 
 ## Run locally
 
+The gear beside the selected database opens tabbed PostgreSQL settings: General, Performance, Queries, Locale, Advanced, and Server. Database owners and administrators can edit the connection limit and permitted database defaults, including memory, timeouts, transaction behavior, and locale. Enable **Override for this database** to set a value; disable it to remove the database override. **Save changes** applies the batch in a transaction. Unsaved drafts survive tab changes, and closing asks whether to discard them. Database defaults affect new connections; role defaults can take precedence. Server-wide, immutable, sensitive, and permission-restricted parameters explain their restrictions instead of offering an unsupported save. No server configuration files are changed.
+
+The settings integration test is opt-in and requires `WEBDB_TEST_CONNECTION_JSON` pointing to an explicitly disposable PostgreSQL instance whose test user has CREATEDB. Run `cargo test --manifest-path backend/Cargo.toml --test postgres_settings -- --ignored`. It creates and drops its own randomly named database and checks saved defaults, resets, rollback, stale values, and SQL quoting.
+
 Requires Node.js 24.11+ and Rust 1.95+. Docker is optional.
 
 ```sh
