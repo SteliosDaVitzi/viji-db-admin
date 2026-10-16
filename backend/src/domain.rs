@@ -1,0 +1,98 @@
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionInput {
+    pub provider: String,
+    pub host: String,
+    pub port: u16,
+    pub database: String,
+    pub username: String,
+    pub password: String,
+    pub ssl: bool,
+}
+
+impl ConnectionInput {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.provider == "demo" {
+            return Ok(());
+        }
+        if self.host.is_empty()
+            || self.host.len() > 253
+            || self
+                .host
+                .chars()
+                .any(|c| c.is_control() || "/\\;".contains(c))
+        {
+            return Err("Enter a valid database host.");
+        }
+        if self.port == 0 {
+            return Err("Enter a port between 1 and 65535.");
+        }
+        if self.database.trim().is_empty()
+            || self.username.trim().is_empty()
+            || self.database.len() > 128
+            || self.username.len() > 128
+            || self.password.len() > 4096
+        {
+            return Err("Enter a database and username of at most 128 characters.");
+        }
+        Ok(())
+    }
+}
+
+#[derive(Serialize)]
+pub struct Provider {
+    pub id: &'static str,
+    pub name: &'static str,
+}
+#[derive(Clone, Serialize)]
+pub struct Table {
+    pub schema: String,
+    pub name: String,
+    pub kind: String,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Column {
+    pub name: String,
+    pub data_type: String,
+    pub nullable: bool,
+    pub primary_key: bool,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TablePage {
+    pub columns: Vec<Column>,
+    pub rows: Vec<Map<String, Value>>,
+    pub has_more: bool,
+    pub page: u32,
+    pub page_size: u32,
+}
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowseQuery {
+    pub schema: String,
+    pub table: String,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+    pub sort: Option<String>,
+    pub descending: Option<bool>,
+}
+impl BrowseQuery {
+    pub fn bounds(&self) -> Result<(u32, u32), &'static str> {
+        let page = self.page.unwrap_or(0);
+        let size = self.page_size.unwrap_or(50);
+        if page > 100_000
+            || !(1..=100).contains(&size)
+            || self.schema.is_empty()
+            || self.table.is_empty()
+            || self.schema.len() > 128
+            || self.table.len() > 128
+        {
+            return Err("Invalid table or pagination parameters.");
+        }
+        Ok((page, size))
+    }
+}

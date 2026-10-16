@@ -1,0 +1,78 @@
+use sqlx::{Connection, Executor, PgConnection};
+use webdb::{
+    adapters::postgres::{PostgresAdapter, quote_identifier},
+    application::DatabaseAdapter,
+    domain::{BrowseQuery, ConnectionInput},
+};
+
+// Creates and deletes only a randomly named schema in an explicitly supplied test DB.
+#[tokio::test]
+#[ignore = "requires WEBDB_TEST_PG_URL pointing to a disposable PostgreSQL database"]
+async fn postgres_browsing_is_exact_quoted_and_read_only() {
+    let url = std::env::var("WEBDB_TEST_PG_URL").expect("set WEBDB_TEST_PG_URL");
+    let mut setup = PgConnection::connect(&url).await.unwrap();
+    let schema = format!("test_{}", uuid::Uuid::new_v4().simple());
+    let qualified = format!(
+        "{}.{}",
+        quote_identifier(&schema),
+        quote_identifier("odd\"table")
+    );
+    setup.execute(sqlx::AssertSqlSafe(format!("CREATE SCHEMA {}; CREATE TABLE {qualified} (id bigint PRIMARY KEY, amount numeric(20,4), note text); INSERT INTO {qualified} VALUES (9007199254740993, 12345678901234.1234, NULL), (9007199254740994, 2.5000, 'hello');", quote_identifier(&schema)).as_str())).await.unwrap();
+    let input = ConnectionInput {
+        provider: "postgres".into(),
+        host: "127.0.0.1".into(),
+        port: 55432,
+        database: "playground".into(),
+        username: "postgres".into(),
+        password: std::env::var("WEBDB_TEST_PG_PASSWORD").expect("set test password"),
+        ssl: false,
+    };
+    let adapter = PostgresAdapter;
+    adapter.test(&input).await.unwrap();
+    let tables = adapter.tables(&input).await.unwrap();
+    assert!(
+        tables
+            .iter()
+            .any(|t| t.schema == schema && t.name == "odd\"table")
+    );
+    let mut query = BrowseQuery {
+        schema: schema.clone(),
+        table: "odd\"table".into(),
+        page_size: Some(1),
+        ..Default::default()
+    };
+    let first = adapter.rows(&input, &query).await.unwrap();
+    assert_eq!(first.rows[0]["id"], "9007199254740993");
+    assert_eq!(first.rows[0]["amount"], "12345678901234.1234");
+    assert!(first.rows[0]["note"].is_null());
+    assert!(first.has_more);
+    assert!(first.columns[0].primary_key);
+    query.sort = Some("amount".into());
+    query.descending = Some(true);
+    let numeric_sorted = adapter.rows(&input, &query).await.unwrap();
+    assert_eq!(
+        numeric_sorted.rows[0]["amount"], "12345678901234.1234",
+        "numeric sorting must use the native column, not its serialized text alias"
+    );
+    query.sort = None;
+    query.descending = None;
+    query.page = Some(1);
+    assert!(!adapter.rows(&input, &query).await.unwrap().has_more);
+    query.sort = Some("id; DROP SCHEMA public;--".into());
+    assert!(adapter.rows(&input, &query).await.is_err());
+    let namespace = quote_identifier(&schema);
+    setup.execute(sqlx::AssertSqlSafe(format!("CREATE FUNCTION {namespace}.attempt_write() RETURNS bigint LANGUAGE plpgsql AS $$ BEGIN INSERT INTO {qualified} (id) VALUES (1); RETURN 1; END $$; CREATE VIEW {namespace}.writes AS SELECT {namespace}.attempt_write() AS id;").as_str())).await.unwrap();
+    query.table = "writes".into();
+    query.sort = None;
+    query.page = None;
+    assert!(
+        adapter.rows(&input, &query).await.is_err(),
+        "read-only transaction must reject writes through a view"
+    );
+    setup
+        .execute(sqlx::AssertSqlSafe(
+            format!("DROP SCHEMA {namespace} CASCADE").as_str(),
+        ))
+        .await
+        .unwrap();
+}
