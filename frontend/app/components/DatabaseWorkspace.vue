@@ -5,6 +5,7 @@ const db = useDatabase()
 const workspaceTabs = useWorkspaceTabs(db)
 const { rowFilter, tab, tableTabs, activeView, activateQuery, runQuery } = workspaceTabs
 const editor = ref<'insert' | 'delete' | 'schema' | null>(null)
+const schemaAction = ref<'execute' | 'createDatabase'>('execute')
 const editingCell = ref<{
   row: Record<string, unknown>
   column: ColumnInfo
@@ -123,12 +124,23 @@ function rowContext(event: MouseEvent, index: number, column?: string) {
   showContext(event, column ? `${column} · Row ${number}` : `Row ${number}`, actions)
 }
 async function mutationSaved() {
+  const savedAction = editor.value === 'schema' ? schemaAction.value : null
   editor.value = null
   selectedRow.value = null
   workspaceTabs.invalidate()
-  toast.show('Change applied successfully.')
+  toast.show(
+    savedAction === 'createDatabase'
+      ? 'Database created successfully.'
+      : savedAction === 'execute'
+        ? 'Database change applied successfully.'
+        : 'Change applied successfully.',
+  )
   explorerKey.value++
   await db.refreshExplorer()
+}
+function openSchemaEditor(action: 'execute' | 'createDatabase' = 'execute') {
+  schemaAction.value = action
+  editor.value = 'schema'
 }
 const {
   providers,
@@ -336,16 +348,28 @@ async function cellSaved() {
                 <AppIcon name="settings" :size="16" />
               </button>
             </div>
-            <button
-              class="button secondary small database-diagram-button"
-              title="Open database diagram"
-              aria-label="Open database diagram"
-              :disabled="connecting || switching || tablesLoading"
-              @click="schemaDiagramOpen = true"
-            >
-              <AppIcon name="diagram" :size="17" />
-              <span>Diagram</span>
-            </button>
+            <div class="database-view-actions">
+              <button
+                class="button secondary small database-diagram-button"
+                title="Open database diagram"
+                aria-label="Open database diagram"
+                :disabled="connecting || switching || tablesLoading"
+                @click="schemaDiagramOpen = true"
+              >
+                <AppIcon name="diagram" :size="17" />
+                <span>Diagram</span>
+              </button>
+              <button
+                v-if="session.allDatabases && !session.readOnly && session.provider !== 'demo'"
+                class="icon-button database-create-button"
+                title="Create database"
+                aria-label="Create database"
+                :disabled="connecting || switching || tablesLoading || busy"
+                @click="openSchemaEditor('createDatabase')"
+              >
+                <AppIcon name="plus" :size="17" />
+              </button>
+            </div>
           </div>
         </div>
         <DatabaseExplorer
@@ -356,7 +380,9 @@ async function cellSaved() {
           :active-database="session.database"
           :selected-table="selectedTable"
           :disabled="connecting || switching || busy"
+          :can-create-table="session.provider !== 'demo' && !session.readOnly"
           @choose="workspaceTabs.chooseDatabaseTable"
+          @create-table="openSchemaEditor('execute')"
           @refresh="db.refreshExplorer"
           @context="tableContext"
           @schema-context="schemaContext"
@@ -546,7 +572,7 @@ async function cellSaved() {
               <button
                 class="button secondary small"
                 :disabled="busy || switching"
-                @click="editor = 'schema'"
+                @click="openSchemaEditor()"
               >
                 Database changes
               </button>
@@ -717,6 +743,7 @@ async function cellSaved() {
       :row="record"
       :database="session.database"
       :instance="session.allDatabases"
+      :initial-action="schemaAction"
       :apply="db.applyMutation"
       @close="editor = null"
       @saved="mutationSaved"

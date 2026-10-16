@@ -7,10 +7,12 @@ const props = defineProps<{
   selectedTable: TableInfo | null
   loading: boolean
   disabled: boolean
+  canCreateTable: boolean
 }>()
 const emit = defineEmits<{
   choose: [database: string, table: TableInfo]
   refresh: []
+  createTable: []
   context: [event: MouseEvent, table: TableInfo]
   schemaContext: [event: MouseEvent, schema: string]
 }>()
@@ -58,6 +60,16 @@ watch(
       <AppIcon name="search" :size="15" />
       <input v-model="filter" placeholder="Find a table…" aria-label="Find a table" />
     </label>
+    <button
+      v-if="canCreateTable"
+      class="icon-button explorer-create-table"
+      title="Create table"
+      aria-label="Create table"
+      :disabled="disabled || loading"
+      @click="emit('createTable')"
+    >
+      <AppIcon name="plus" :size="16" />
+    </button>
     <button
       class="icon-button explorer-refresh"
       title="Refresh explorer"

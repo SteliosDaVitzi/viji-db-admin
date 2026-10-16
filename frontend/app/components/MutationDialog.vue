@@ -9,6 +9,7 @@ const props = defineProps<{
   row: Record<string, unknown> | null
   database: string
   instance: boolean
+  initialAction?: 'execute' | 'createDatabase'
   apply: (mutation: Mutation) => Promise<{ affectedRows: number }>
 }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
@@ -18,7 +19,9 @@ const saving = ref(false)
 const error = ref('')
 useActionFeedback(error)
 const confirmation = ref('')
-const action = ref<'execute' | 'createDatabase' | 'dropDatabase' | 'dropTable'>('execute')
+const action = ref<'execute' | 'createDatabase' | 'dropDatabase' | 'dropTable'>(
+  props.initialAction ?? 'execute',
+)
 const name = ref('')
 const options = computed(() => providerOptions(props.provider))
 const quote = (value: string) => quoteIdentifier(value, props.provider)

@@ -442,6 +442,13 @@ svg {
   background: var(--surface);
   border-radius: 5px;
 }
+.explorer-create-table {
+  width: 33px;
+  height: 33px;
+  flex: 0 0 33px;
+  background: var(--surface);
+  border-radius: 5px;
+}
 .search-box {
   display: flex;
   align-items: center;
@@ -1960,10 +1967,15 @@ kbd {
     flex-basis: 30px;
   }
   .database-diagram-button {
-    width: 100%;
+    width: auto;
     height: 30px;
-    flex: 0 0 30px;
+    flex: 1 1 auto;
     padding: 0 8px;
+  }
+  .database-create-button {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
   }
   .database-diagram-button span {
     display: inline;
@@ -2097,6 +2109,10 @@ kbd {
   min-width: 0;
   margin: 0;
 }
+.database-view-actions {
+  display: flex;
+  gap: 8px;
+}
 .database-settings-button {
   flex: 0 0 34px;
   width: 34px;
@@ -2112,9 +2128,9 @@ kbd {
   color: var(--accent);
 }
 .database-diagram-button {
-  width: 100%;
+  width: auto;
   height: 34px;
-  flex: 0 0 34px;
+  flex: 1 1 auto;
   justify-content: flex-start;
   gap: 6px;
   padding: 0 9px;
@@ -2124,6 +2140,19 @@ kbd {
   font-size: var(--text-sm);
 }
 .database-diagram-button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+.database-create-button {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  background: var(--raised);
+  border: 1px solid var(--raised);
+  border-radius: 5px;
+  color: var(--accent);
+}
+.database-create-button:hover:not(:disabled) {
   background: var(--accent-soft);
   color: var(--accent-hover);
 }
