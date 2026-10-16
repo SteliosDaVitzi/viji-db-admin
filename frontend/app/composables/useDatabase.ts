@@ -119,7 +119,8 @@ export function useDatabase() {
         tables.value.find((t) => t.schema === previous?.schema && t.name === previous.name) ||
         tables.value.find((t) => t.schema === 'public') ||
         tables.value[0]
-      if (table) await chooseTable(table)
+      if (activeQuery.value) await loadRows()
+      else if (table) await chooseTable(table)
       else {
         selectedTable.value = null
         data.value = null

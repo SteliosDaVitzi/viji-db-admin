@@ -58,9 +58,6 @@
   outline: none;
   box-shadow: none;
 }
-.cell-editor select:focus-visible {
-  outline: 2px solid var(--accent);
-}
 .cell-editor-actions {
   display: flex;
   justify-content: flex-end;
@@ -127,9 +124,6 @@
   border: 1px solid var(--raised);
   border-radius: 5px;
   font: inherit;
-}
-.mutation-dialog textarea:focus-visible {
-  outline: 2px solid var(--accent);
 }
 .mutation-dialog .sql-change,
 .mutation-record {
@@ -235,8 +229,6 @@ button:disabled {
 }
 button:focus-visible,
 a:focus-visible,
-input:focus-visible,
-select:focus-visible,
 summary:focus-visible,
 td:focus-visible,
 tr:focus-visible,
@@ -470,7 +462,7 @@ svg {
   height: 100%;
 }
 .search-box:focus-within {
-  box-shadow: 0 0 0 2px var(--focus-ring);
+  background-color: var(--raised);
 }
 .search-box input:focus-visible {
   box-shadow: none !important;
@@ -2675,4 +2667,68 @@ kbd {
     right: 16px;
     bottom: 72px;
   }
+}
+
+/* Fields use a background change for focus, without an outline or halo. */
+input:focus,
+select:focus,
+textarea:focus,
+[role='combobox']:focus,
+[contenteditable='true']:focus {
+  outline: none;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  background-color: var(--raised);
+}
+.table-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 3px;
+  padding: 8px 24px 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  border-bottom: 1px solid var(--raised);
+}
+.table-tab {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--muted);
+  border-radius: 5px 5px 0 0;
+  border-bottom: 2px solid transparent;
+}
+.table-tab:hover {
+  background: var(--surface);
+}
+.table-tab.active {
+  background: var(--surface);
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.table-tab-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  min-width: 0;
+  max-width: 240px;
+  text-align: left;
+  font-size: var(--text-control);
+}
+.table-tab-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.table-tab-title > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.table-tab-title small {
+  font-size: var(--text-xs);
+  color: var(--muted);
 }

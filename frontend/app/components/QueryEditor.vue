@@ -195,7 +195,7 @@ async function endRename(cancel = false) {
   document.getElementById(`${id}-tab`)?.focus()
 }
 function activate(id: string) {
-  if (props.busy || id === activeId.value) return
+  if (props.busy) return
   activeId.value = id
   emit('activate', id)
 }
@@ -318,8 +318,9 @@ function run() {
             aria-controls="query-panel"
             :tabindex="activeId === draft.id ? 0 : -1"
             :disabled="busy"
-            :title="`${draftName(draft)} · Click to rename`"
-            @click="startRename(draft)"
+            :title="`${draftName(draft)} · Double-click to rename`"
+            @click="activate(draft.id)"
+            @dblclick="startRename(draft)"
             @keydown="navigateTab($event, index)"
           >
             {{ draftName(draft) }}

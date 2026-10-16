@@ -2,6 +2,8 @@
 import { providerOptions, quoteIdentifier } from '../providers'
 import type { ColumnInfo, ConnectionInput, ContextAction, TableInfo } from '../../shared/database'
 const db = useDatabase()
+const workspaceTabs = useWorkspaceTabs(db)
+const { rowFilter, tab, tableTabs, activeView, activateQuery, runQuery } = workspaceTabs
 const editor = ref<'insert' | 'delete' | 'schema' | null>(null)
 const editingCell = ref<{
   row: Record<string, unknown>
@@ -13,7 +15,7 @@ const editable = computed(
     session.value.provider !== 'demo' &&
     !session.value.readOnly &&
     providerOptions(session.value.provider).editing &&
-    !activeQuery.value &&
+    !workspaceTabs.queryActive.value &&
     selectedTable.value?.kind === 'BASE TABLE',
 )
 const recordEditable = computed(
@@ -62,12 +64,12 @@ function workspaceContext(event: MouseEvent) {
 function tableContext(event: MouseEvent, table: TableInfo) {
   const disabled = busy.value || switching.value
   showContext(event, table.name, [
-    { label: 'Browse table', disabled, run: () => db.chooseTable(table) },
+    { label: 'Browse table', disabled, run: () => workspaceTabs.openTable(table) },
     {
       label: 'View structure',
       disabled,
       run: async () => {
-        await db.chooseTable(table)
+        await workspaceTabs.openTable(table)
         tab.value = 'structure'
       },
     },
@@ -122,7 +124,7 @@ function rowContext(event: MouseEvent, index: number, column?: string) {
 async function mutationSaved() {
   editor.value = null
   selectedRow.value = null
-  queryViews.clear()
+  workspaceTabs.invalidate()
   toast.show('Change applied successfully.')
   explorerKey.value++
   await db.refreshExplorer()
@@ -151,78 +153,71 @@ const {
 } = db
 const sidebar = useSidebarResize()
 const explorerKey = ref(0)
-const rowFilter = ref('')
-const tab = ref<'data' | 'structure'>('data')
 const queryWorkspaceKey = ref(0)
-let currentQueryId = 'query-1'
-function captureQueryView() {
-  return {
-    data: data.value,
-    activeQuery: activeQuery.value,
-    page: page.value,
-    pageSize: pageSize.value,
-    sort: sort.value,
-    descending: descending.value,
-    table: selectedTable.value,
-    filter: rowFilter.value,
-    tab: tab.value,
-    error: error.value,
-  }
-}
-const queryViews = new Map<string, ReturnType<typeof captureQueryView>>()
 watch(session, () => {
   settingsOpen.value = false
   context.value = null
   editingCell.value = null
   editor.value = null
-  queryViews.clear()
-  currentQueryId = 'query-1'
   queryWorkspaceKey.value++
 })
-async function activateQuery(id: string) {
-  if (busy.value || id === currentQueryId) return
-  queryViews.set(currentQueryId, captureQueryView())
-  currentQueryId = id
-  selectedRow.value = null
-  const view = queryViews.get(id)
-  if (view) {
-    selectedTable.value = view.table
-    data.value = view.data
-    activeQuery.value = view.activeQuery
-    page.value = view.page
-    pageSize.value = view.pageSize
-    sort.value = view.sort
-    descending.value = view.descending
-    error.value = view.error
-    await nextTick()
-    rowFilter.value = view.filter
-    tab.value = view.tab
-  } else {
-    rowFilter.value = ''
-    tab.value = 'data'
-    await db.browseTable()
-  }
+function tableTabId(table: TableInfo) {
+  return 'table-' + encodeURIComponent(workspaceTabs.key(table))
 }
+async function focusTable(table: TableInfo) {
+  await nextTick()
+  document.getElementById(tableTabId(table))?.focus()
+}
+async function closeTable(table: TableInfo) {
+  await workspaceTabs.closeTable(table)
+  const active = tableTabs.value.find((item) => workspaceTabs.key(item) === activeView.value)
+  if (active) await focusTable(active)
+  else if (!tableTabs.value.length)
+    document.querySelector<HTMLButtonElement>('.table-link')?.focus()
+}
+async function navigateTable(event: KeyboardEvent, index: number) {
+  if (busy.value || switching.value || connecting.value) return
+  if (event.key === 'Delete') {
+    event.preventDefault()
+    await closeTable(tableTabs.value[index]!)
+    return
+  }
+  const count = tableTabs.value.length
+  const target =
+    event.key === 'ArrowRight'
+      ? (index + 1) % count
+      : event.key === 'ArrowLeft'
+        ? (index + count - 1) % count
+        : event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? count - 1
+            : null
+  if (target === null) return
+  event.preventDefault()
+  const table = tableTabs.value[target]!
+  await workspaceTabs.openTable(table)
+  await focusTable(table)
+}
+watch(activeView, async () => {
+  await nextTick()
+  const active = tableTabs.value.find((item) => workspaceTabs.key(item) === activeView.value)
+  if (active)
+    document
+      .getElementById(tableTabId(active))
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+})
 const connectionDialog = useTemplateRef<HTMLDialogElement>('connectionDialog')
 const initialSql = computed(() => {
   return selectedTable.value
     ? `SELECT * FROM ${quoteIdentifier(selectedTable.value.schema, session.value?.provider)}.${quoteIdentifier(selectedTable.value.name, session.value?.provider)};`
     : 'SELECT 1 AS result;'
 })
-async function runQuery(sql: string) {
-  tab.value = 'data'
-  rowFilter.value = ''
-  await db.runQuery(sql)
-}
 const record = computed(() =>
   selectedRow.value === null ? null : data.value?.rows[selectedRow.value] || null,
 )
 watch([data, busy, switching], () => {
   context.value = null
-})
-watch(selectedTable, () => {
-  rowFilter.value = ''
-  tab.value = 'data'
 })
 async function connect(input: ConnectionInput | string) {
   if (await db.connect(input)) {
@@ -252,7 +247,7 @@ function editCell(index: number, name: string) {
 }
 async function cellSaved() {
   editingCell.value = null
-  queryViews.clear()
+  workspaceTabs.invalidate()
   toast.show('Value saved.')
   await db.loadRows()
 }
@@ -347,8 +342,8 @@ async function cellSaved() {
           :loading="tablesLoading"
           :active-database="session.database"
           :selected-table="selectedTable"
-          :disabled="connecting || switching"
-          @choose="db.chooseDatabaseTable"
+          :disabled="connecting || switching || busy"
+          @choose="workspaceTabs.chooseDatabaseTable"
           @refresh="db.refreshExplorer"
           @context="tableContext"
           @schema-context="schemaContext"
@@ -404,11 +399,60 @@ async function cellSaved() {
           :selected-table="selectedTable"
           @run="runQuery"
           @activate="activateQuery"
-          @close="queryViews.delete($event)"
+          @close="workspaceTabs.closeQuery"
         />
+        <div v-if="tableTabs.length" class="table-tabs" role="tablist" aria-label="Open tables">
+          <div
+            v-for="(table, index) in tableTabs"
+            :key="workspaceTabs.key(table)"
+            class="table-tab"
+            :class="{ active: activeView === workspaceTabs.key(table) }"
+            role="presentation"
+          >
+            <button
+              :id="tableTabId(table)"
+              class="table-tab-label"
+              role="tab"
+              :aria-selected="activeView === workspaceTabs.key(table)"
+              aria-controls="table-grid-region"
+              :tabindex="
+                activeView === workspaceTabs.key(table) ||
+                (workspaceTabs.queryActive.value && index === 0)
+                  ? 0
+                  : -1
+              "
+              :disabled="busy || switching || connecting"
+              :title="session.database + '.' + table.schema + '.' + table.name"
+              @click="workspaceTabs.openTable(table)"
+              @keydown="navigateTable($event, index)"
+            >
+              <AppIcon name="table" :size="14" />
+              <span class="table-tab-title"
+                ><span>{{ table.name }}</span
+                ><small>{{ table.schema }}</small></span
+              >
+            </button>
+            <button
+              class="query-tab-close"
+              type="button"
+              :disabled="busy || switching || connecting"
+              :aria-label="'Close table ' + table.schema + '.' + table.name"
+              title="Close table"
+              @click="closeTable(table)"
+            >
+              <AppIcon name="close" :size="12" />
+            </button>
+          </div>
+        </div>
         <div class="table-heading">
-          <AppIcon :name="activeQuery ? 'grid' : 'table'" :size="15" />
-          <h1>{{ activeQuery ? 'Query results' : selectedTable?.name || 'Your database' }}</h1>
+          <AppIcon :name="workspaceTabs.queryActive.value ? 'grid' : 'table'" :size="15" />
+          <h1>
+            {{
+              workspaceTabs.queryActive.value
+                ? 'Query results'
+                : selectedTable?.name || 'Your database'
+            }}
+          </h1>
           <span class="table-subtitle"
             >{{ session.database }} / {{ selectedTable?.schema || 'Tables' }}</span
           >
@@ -441,7 +485,8 @@ async function cellSaved() {
               @click="tab = 'data'"
               @keydown.right="tab = 'structure'"
             >
-              <AppIcon name="table" :size="15" />{{ activeQuery ? 'Results' : 'Data'
+              <AppIcon name="table" :size="15" />{{
+                workspaceTabs.queryActive.value ? 'Results' : 'Data'
               }}<span v-if="data">{{ data.rows.length }}</span></button
             ><button
               id="structure-tab"
@@ -482,7 +527,11 @@ async function cellSaved() {
               class="icon-button"
               title="Refresh rows"
               aria-label="Refresh rows"
-              :disabled="busy || (!selectedTable && !activeQuery)"
+              :disabled="
+                busy ||
+                switching ||
+                (workspaceTabs.queryActive.value ? !activeQuery : !selectedTable)
+              "
               @click="db.loadRows"
             >
               <AppIcon name="refresh" :size="17" :class="{ spinning: busy }" /></button
@@ -500,7 +549,7 @@ async function cellSaved() {
             v-if="activeQuery"
             class="text-button back-to-table"
             :disabled="busy"
-            @click="db.browseTable"
+            @click="workspaceTabs.backToTable"
           >
             Back to table
           </button>
@@ -551,6 +600,7 @@ async function cellSaved() {
         </div>
         <div id="table-grid-region" class="data-body">
           <section
+            :key="activeView"
             class="data-content"
             role="tabpanel"
             :aria-labelledby="tab === 'data' ? 'data-tab' : 'structure-tab'"
@@ -606,7 +656,9 @@ async function cellSaved() {
                 {{
                   error
                     ? 'Check your connection and database permissions, then try again.'
-                    : 'Select a table from the explorer.'
+                    : workspaceTabs.queryActive.value
+                      ? 'Run this query to see its results.'
+                      : 'Select a table from the explorer to open a tab.'
                 }}
               </p>
               <button
