@@ -319,11 +319,6 @@ async function cellSaved() {
                   : 'Connect to get started'
               }}</span>
             </div>
-            <span
-              class="status-dot"
-              :class="{ online: session }"
-              :title="session ? 'Connected' : 'Disconnected'"
-            />
           </div>
           <div v-if="session" class="database-select-row">
             <DatabaseSelect

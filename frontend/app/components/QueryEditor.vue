@@ -18,6 +18,7 @@ interface SavedQuery {
 interface QueryDraft {
   id: string
   number: number
+  name?: string
   sql: string
   savedId: string | null
 }
@@ -38,6 +39,8 @@ const saved = ref<SavedQuery[]>([])
 const selected = computed(() => saved.value.find((query) => query.id === activeDraft.value.savedId))
 const naming = ref(false)
 const name = ref('')
+const renamingId = ref<string | null>(null)
+const tabName = ref('')
 const feedback = ref('')
 useActionFeedback(feedback, 'success')
 const storageError = ref('')
@@ -155,7 +158,41 @@ watch(activeId, async () => {
 })
 function draftName(draft: QueryDraft) {
   const query = saved.value.find((item) => item.id === draft.savedId)
-  return query ? `${query.name}${query.sql !== draft.sql ? ' •' : ''}` : `Query ${draft.number}`
+  return query
+    ? `${query.name}${query.sql !== draft.sql ? ' •' : ''}`
+    : draft.name || `Query ${draft.number}`
+}
+async function startRename(draft: QueryDraft) {
+  if (props.busy) return
+  activate(draft.id)
+  const query = saved.value.find((item) => item.id === draft.savedId)
+  tabName.value = query?.name || draft.name || `Query ${draft.number}`
+  renamingId.value = draft.id
+  await nextTick()
+  const input = document.getElementById(`${draft.id}-name`) as HTMLInputElement | null
+  input?.focus()
+  input?.select()
+}
+function finishRename() {
+  const draft = drafts.value.find((item) => item.id === renamingId.value)
+  const value = tabName.value.trim().slice(0, 80)
+  if (draft && value) {
+    if (draft.savedId) {
+      persist(
+        saved.value.map((query) =>
+          query.id === draft.savedId ? { ...query, name: value } : query,
+        ),
+      )
+    } else draft.name = value
+  }
+  renamingId.value = null
+}
+async function endRename(cancel = false) {
+  const id = renamingId.value
+  if (cancel) renamingId.value = null
+  else finishRename()
+  await nextTick()
+  document.getElementById(`${id}-tab`)?.focus()
 }
 function activate(id: string) {
   if (props.busy || id === activeId.value) return
@@ -200,7 +237,7 @@ function persist(queries: SavedQuery[]) {
   }
 }
 async function startSave() {
-  name.value = selected.value?.name || ''
+  name.value = selected.value?.name || activeDraft.value.name || ''
   naming.value = true
   feedback.value = ''
   await nextTick()
@@ -273,6 +310,7 @@ function run() {
           role="presentation"
         >
           <button
+            v-show="renamingId !== draft.id"
             :id="`${draft.id}-tab`"
             class="query-tab-label"
             role="tab"
@@ -280,12 +318,23 @@ function run() {
             aria-controls="query-panel"
             :tabindex="activeId === draft.id ? 0 : -1"
             :disabled="busy"
-            :title="draftName(draft)"
-            @click="activate(draft.id)"
+            :title="`${draftName(draft)} · Click to rename`"
+            @click="startRename(draft)"
             @keydown="navigateTab($event, index)"
           >
             {{ draftName(draft) }}
           </button>
+          <input
+            v-if="renamingId === draft.id"
+            :id="`${draft.id}-name`"
+            v-model="tabName"
+            class="query-tab-name"
+            aria-label="Rename query tab"
+            maxlength="80"
+            @blur="finishRename"
+            @keydown.enter.prevent="endRename()"
+            @keydown.esc.prevent="endRename(true)"
+          />
           <button
             v-if="drafts.length > 1"
             class="query-tab-close"

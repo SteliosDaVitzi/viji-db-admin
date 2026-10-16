@@ -433,18 +433,6 @@ svg {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.status-dot {
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  background: var(--muted);
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.status-dot.online {
-  background: var(--green);
-  box-shadow: 0 0 7px #8fc9a620;
-}
 .explorer-toolbar {
   display: flex;
   align-items: center;
@@ -1298,6 +1286,12 @@ kbd {
   color: var(--muted);
   border-radius: 3px;
 }
+.query-tab-name {
+  width: 160px;
+  margin: 5px 6px;
+  padding: 4px 5px;
+  font-size: var(--text-control);
+}
 .query-tab-close:hover {
   background: var(--raised);
   color: var(--text);
@@ -1948,10 +1942,6 @@ kbd {
   }
   .connection-summary div > span {
     font-size: var(--text-xs);
-  }
-  .connection-summary .status-dot {
-    width: 4px;
-    height: 4px;
   }
   .table-search {
     padding: 0 7px;
