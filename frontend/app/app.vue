@@ -259,23 +259,39 @@ async function cellSaved() {
 <template>
   <div class="workspace" @contextmenu.prevent="workspaceContext">
     <header class="app-header">
-      <a href="/" class="brand" aria-label="WebDB home"
-        ><span class="brand-icon"><AppIcon name="database" :size="20" /></span>web<span
-          class="brand-db"
-          >db</span
-        ><span class="brand-caption">Database workspace</span></a
-      >
-      <div v-if="session" class="header-actions">
-        <span class="read-only"
-          ><AppIcon name="lock" :size="13" />{{
-            session && session.provider !== 'demo' ? 'Browse & edit' : 'Read only'
-          }}</span
-        ><button
-          v-if="session"
-          class="button secondary small"
-          @click="connectionDialog?.showModal()"
+      <div class="header-branding">
+        <a href="/" class="brand" aria-label="WebDB home"
+          ><span class="brand-icon"><AppIcon name="database" :size="20" /></span>web<span
+            class="brand-db"
+            >db</span
+          ></a
         >
+        <a class="brand-attribution" href="https://vijitek.com">
+          <span>By</span>
+          <span class="attribution-logo" aria-hidden="true">
+            <img
+              src="~/assets/images/vijitek-logo.webp"
+              alt=""
+              width="1280"
+              height="1280"
+              decoding="async"
+            />
+          </span>
+          <strong>Vijitek</strong>
+        </a>
+      </div>
+      <div v-if="session" class="header-actions">
+        <button class="button secondary small" @click="connectionDialog?.showModal()">
           <AppIcon name="plus" :size="15" /><span>New connection</span>
+        </button>
+        <button
+          class="icon-button"
+          title="Disconnect"
+          aria-label="Disconnect"
+          :disabled="connecting || switching"
+          @click="db.disconnect"
+        >
+          <AppIcon name="disconnect" :size="19" />
         </button>
       </div>
     </header>
@@ -285,7 +301,6 @@ async function cellSaved() {
       :style="{ '--sidebar-width': sidebar.width.value + 'px' }"
     >
       <aside v-if="session" id="database-sidebar" class="sidebar" aria-label="Database explorer">
-        <div class="sidebar-label">Connection</div>
         <div class="connection-card">
           <div class="connection-summary">
             <span class="provider-mark"><AppIcon name="database" :size="19" /></span>
@@ -345,24 +360,6 @@ async function cellSaved() {
         <div v-else class="sidebar-placeholder">
           <AppIcon name="table" :size="22" />
           <p>Your tables will<br />appear here.</p>
-        </div>
-        <div class="sidebar-footer">
-          <template v-if="session"
-            ><span
-              ><span class="status-dot online" />{{
-                session.provider === 'demo' ? 'Sample data' : 'Connected'
-              }}</span
-            ><button
-              class="icon-button"
-              title="Disconnect"
-              aria-label="Disconnect"
-              :disabled="connecting || switching"
-              @click="db.disconnect"
-            >
-              <AppIcon name="disconnect" :size="15" /></button></template
-          ><template v-else
-            ><AppIcon name="lock" :size="13" /><span>Your database workspace</span></template
-          >
         </div>
       </aside>
       <div
@@ -534,6 +531,8 @@ async function cellSaved() {
                   <option :value="25">25</option>
                   <option :value="50">50</option>
                   <option :value="100">100</option>
+                  <option :value="500">500</option>
+                  <option :value="1000">1000</option>
                 </select></label
               ><button
                 class="icon-button previous"
@@ -630,21 +629,6 @@ async function cellSaved() {
         </div>
       </main>
     </div>
-    <footer class="app-footer">
-      <a class="footer-brand" href="https://vijitek.com">
-        <span>By</span>
-        <span class="footer-logo" aria-hidden="true">
-          <img
-            src="~/assets/images/vijitek-logo.webp"
-            alt=""
-            width="1280"
-            height="1280"
-            decoding="async"
-          />
-        </span>
-        <strong>Vijitek</strong>
-      </a>
-    </footer>
     <ContextMenu
       v-if="context"
       :key="`${context.x}-${context.y}-${context.label}`"

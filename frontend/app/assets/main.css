@@ -293,24 +293,10 @@ svg {
   display: flex;
   align-items: center;
 }
-.brand-caption {
-  font-size: 11px;
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--muted);
-  margin-left: 22px;
-}
 .header-actions {
   display: flex;
   gap: 24px;
   align-items: center;
-}
-.read-only {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  color: var(--secondary);
-  font-size: 11px;
 }
 .button {
   display: inline-flex;
@@ -385,13 +371,6 @@ svg {
   padding: 25px 14px 0;
   box-shadow: 3px 0 14px #0000000c;
   z-index: 1;
-}
-.sidebar-label {
-  font-size: 10px;
-  letter-spacing: 0.5px;
-  color: var(--muted);
-  padding: 0 9px;
-  margin-bottom: 13px;
 }
 .connection-card {
   background: #22252a;
@@ -557,22 +536,6 @@ kbd {
   color: var(--muted);
   font-size: 12px;
   padding: 10px;
-}
-.sidebar-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 7px;
-  min-height: 57px;
-  color: var(--muted);
-  font-size: 10px;
-  margin-top: auto;
-  padding: 0 8px;
-}
-.sidebar-footer > span {
-  display: flex;
-  gap: 7px;
-  align-items: center;
 }
 .sidebar-placeholder {
   flex: 1;
@@ -868,33 +831,28 @@ kbd {
   padding: 12px 14px;
   font-size: 12px;
 }
-.app-footer {
+.header-branding {
   display: flex;
-  justify-content: center;
   align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  padding-top: 12px;
-  margin-bottom: 24px;
-  flex-shrink: 0;
-  color: var(--muted);
-  font-size: 15px;
+  flex-wrap: wrap;
+  gap: 20px;
 }
 
-.footer-brand {
+.brand-attribution {
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  color: inherit;
+  color: var(--muted);
+  font-size: 15px;
   text-decoration: none;
 }
 
-.app-footer strong {
+.brand-attribution strong {
   color: var(--text);
   font-weight: 600;
 }
 
-.footer-logo {
+.attribution-logo {
   display: inline-block;
   position: relative;
   width: 31px;
@@ -903,7 +861,7 @@ kbd {
   flex: none;
 }
 
-.footer-logo img {
+.attribution-logo img {
   position: absolute;
   width: 49.46px;
   height: 49.46px;
@@ -913,17 +871,6 @@ kbd {
   filter: brightness(0) invert(1);
 }
 
-@media (max-width: 760px) {
-  .app-footer {
-    margin-bottom: 14px;
-  }
-}
-
-@media (max-width: 420px) {
-  .app-footer {
-    margin-bottom: 10px;
-  }
-}
 .database-main {
   flex: 1;
   min-width: 0;
@@ -1139,8 +1086,32 @@ kbd {
 .sql-tooltip-layer .cm-tooltip {
   pointer-events: auto;
 }
-.query-completion-help {
-  margin-left: auto;
+.query-help {
+  position: relative;
+}
+.query-help-tooltip {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 8;
+  width: 350px;
+  max-width: calc(100vw - 32px);
+  padding: 12px;
+  border: 1px solid var(--raised);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--secondary);
+  box-shadow: 0 6px 18px #0004;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.query-help-tooltip span {
+  display: block;
+}
+.query-help:hover .query-help-tooltip,
+.query-help:focus-within .query-help-tooltip {
+  display: block;
 }
 .query-resize {
   position: relative;
@@ -1687,14 +1658,8 @@ kbd {
   .pagination-detail {
     display: none;
   }
-  .brand-caption {
-    display: none;
-  }
 }
 @media (max-width: 900px) {
-  .read-only {
-    display: none;
-  }
   .pagination label {
     font-size: 0;
   }
@@ -1714,17 +1679,17 @@ kbd {
   }
   .app-header {
     padding: 0 16px;
-    height: 58px;
+    height: auto;
     min-height: 58px;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-block: 10px;
   }
   .brand {
     font-size: 21px;
   }
   .sidebar {
     padding: 18px 8px 0;
-  }
-  .sidebar-label {
-    font-size: 9px;
   }
   .connection-summary {
     padding: 9px 6px;

@@ -355,6 +355,20 @@ function run() {
         >
           <AppIcon name="play" :size="12" />{{ busy ? 'Running…' : 'Run' }}
         </button>
+        <div class="query-help">
+          <button
+            class="icon-button"
+            type="button"
+            aria-label="Query help and keyboard shortcuts"
+            aria-describedby="query-help"
+          >
+            <span aria-hidden="true">?</span>
+          </button>
+          <div id="query-help" class="query-help-tooltip" role="tooltip">
+            <span>Read only · Ctrl / ⌘ + Enter to run</span>
+            <span>Ctrl + Space: suggest · Tab / Enter: accept · Esc: dismiss</span>
+          </div>
+        </div>
       </div>
     </div>
     <div id="query-panel" class="query-panel" role="tabpanel" :aria-labelledby="`${activeId}-tab`">
@@ -389,17 +403,14 @@ function run() {
       </button>
       <button class="text-button" type="button" @click="naming = false">Cancel</button>
     </form>
-    <div class="query-footnote">
-      <span id="query-help">{{
-        activeQuery && sql.trim() !== activeQuery
-          ? 'Query changed · Run to update results'
-          : demo
-            ? 'Sample: SELECT * FROM a table, with optional LIMIT'
-            : 'Read only · Ctrl / ⌘ + Enter to run'
-      }}</span>
-      <span class="query-completion-help"
-        >Ctrl + Space: suggest · Tab / Enter: accept · Esc: dismiss</span
+    <div
+      v-if="(activeQuery && sql.trim() !== activeQuery) || demo || feedback"
+      class="query-footnote"
+    >
+      <span v-if="activeQuery && sql.trim() !== activeQuery"
+        >Query changed · Run to update results</span
       >
+      <span v-else-if="demo">Sample: SELECT * FROM a table, with optional LIMIT</span>
       <span v-if="feedback" role="status">{{ feedback }}</span>
     </div>
     <p v-if="storageError" class="query-storage-error" role="alert">{{ storageError }}</p>

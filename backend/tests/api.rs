@@ -65,7 +65,15 @@ async fn session_browsing_validation_and_disconnect() {
             StatusCode::OK,
         ),
         (
-            "/api/rows?schema=public&table=customers&pageSize=101",
+            "/api/rows?schema=public&table=customers&pageSize=500",
+            StatusCode::OK,
+        ),
+        (
+            "/api/rows?schema=public&table=customers&pageSize=1000",
+            StatusCode::OK,
+        ),
+        (
+            "/api/rows?schema=public&table=customers&pageSize=1001",
             StatusCode::BAD_REQUEST,
         ),
         (
@@ -98,11 +106,24 @@ async fn session_browsing_validation_and_disconnect() {
             assert!(columns.iter().any(|column| column == "email"));
             continue;
         }
-        if path.contains("pageSize=5") {
+        if path.ends_with("pageSize=5") {
             let body = response.into_body().collect().await.unwrap().to_bytes();
             let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
             assert_eq!(json["rows"].as_array().unwrap().len(), 5);
             assert_eq!(json["hasMore"], true);
+        } else if status == StatusCode::OK && path.starts_with("/api/rows?") {
+            let body = response.into_body().collect().await.unwrap().to_bytes();
+            let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(json["rows"].as_array().unwrap().len(), 124);
+            assert_eq!(json["hasMore"], false);
+            assert_eq!(
+                json["pageSize"],
+                if path.ends_with("pageSize=500") {
+                    500
+                } else {
+                    1000
+                }
+            );
         }
     }
     for (sql, page, page_size, status, expected_rows, has_more) in [
@@ -142,7 +163,23 @@ async fn session_browsing_validation_and_disconnect() {
         (
             "SELECT * FROM customers",
             0,
-            101,
+            500,
+            StatusCode::OK,
+            124,
+            false,
+        ),
+        (
+            "SELECT * FROM customers",
+            0,
+            1000,
+            StatusCode::OK,
+            124,
+            false,
+        ),
+        (
+            "SELECT * FROM customers",
+            0,
+            1001,
             StatusCode::BAD_REQUEST,
             0,
             false,

@@ -226,7 +226,7 @@ impl SqlQuery {
         if self.sql.trim().is_empty() || self.sql.len() > 12_000 {
             return Err("Enter a query of at most 12,000 bytes.");
         }
-        if page > 100_000 || !(1..=100).contains(&size) {
+        if page > 100_000 || !(1..=1000).contains(&size) {
             return Err("Invalid query pagination parameters.");
         }
         Ok((page, size))
@@ -240,7 +240,7 @@ impl BrowseQuery {
         let page = self.page.unwrap_or(0);
         let size = self.page_size.unwrap_or(50);
         if page > 100_000
-            || !(1..=100).contains(&size)
+            || !(1..=1000).contains(&size)
             || self.schema.is_empty()
             || self.table.is_empty()
             || self.schema.len() > 128
