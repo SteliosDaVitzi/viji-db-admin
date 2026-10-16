@@ -1,10 +1,10 @@
-FROM node:24-bookworm-slim AS build
+FROM node:25-bookworm-slim AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
-FROM node:24-bookworm-slim
+FROM node:25-bookworm-slim
 WORKDIR /app
 COPY --from=build --chown=node:node /app/.output ./.output
 USER node
