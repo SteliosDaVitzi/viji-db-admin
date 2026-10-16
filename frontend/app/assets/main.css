@@ -312,10 +312,6 @@ svg {
   color: var(--secondary);
   font-size: 11px;
 }
-.version {
-  font-size: 11px;
-  color: var(--muted);
-}
 .button {
   display: inline-flex;
   justify-content: center;
@@ -604,19 +600,6 @@ kbd {
   min-width: 0;
   background: radial-gradient(ellipse at 50% 35%, #232a342e, transparent 65%);
 }
-.welcome-context {
-  color: var(--muted);
-  font-size: 11px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 32px;
-}
-.context-line {
-  width: 20px;
-  height: 1px;
-  background: #596476;
-}
 .connection-form {
   width: 100%;
   max-width: 420px;
@@ -885,53 +868,61 @@ kbd {
   padding: 12px 14px;
   font-size: 12px;
 }
-.form-footnote {
-  font-size: 10px;
-  color: var(--muted);
+.app-footer {
   display: flex;
-  align-items: center;
   justify-content: center;
+  align-items: center;
   gap: 6px;
-  margin-top: 14px;
-}
-.sample-link {
-  margin-top: 29px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  font-size: 11px;
+  min-height: 32px;
+  padding-top: 12px;
+  margin-bottom: 24px;
+  flex-shrink: 0;
   color: var(--muted);
+  font-size: 15px;
 }
-.sample-link button {
-  font-size: 11px;
-}
-.welcome-footer {
-  display: flex;
-  gap: 40px;
-  margin-top: 45px;
-  font-size: 10px;
-  color: #555e6a;
-}
-.statusbar {
-  height: 30px;
-  min-height: 30px;
-  background: #1b1e22;
-  display: flex;
+
+.footer-brand {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 19px;
-  font-size: 10px;
-  color: var(--muted);
+  gap: 9px;
+  color: inherit;
+  text-decoration: none;
 }
-.statusbar > span {
-  display: flex;
-  align-items: center;
-  gap: 7px;
+
+.app-footer strong {
+  color: var(--text);
+  font-weight: 600;
 }
-.statusbar-divider {
-  padding: 0 6px;
-  color: #46505c;
+
+.footer-logo {
+  display: inline-block;
+  position: relative;
+  width: 31px;
+  height: 28px;
+  overflow: hidden;
+  flex: none;
+}
+
+.footer-logo img {
+  position: absolute;
+  width: 49.46px;
+  height: 49.46px;
+  max-width: none;
+  left: -10.26px;
+  top: -14px;
+  filter: brightness(0) invert(1);
+}
+
+@media (max-width: 760px) {
+  .app-footer {
+    margin-bottom: 14px;
+  }
+}
+
+@media (max-width: 420px) {
+  .app-footer {
+    margin-bottom: 10px;
+  }
 }
 .database-main {
   flex: 1;
@@ -1710,9 +1701,6 @@ kbd {
   .pagination select {
     font-size: 10px;
   }
-  .statusbar > span:nth-child(2) {
-    display: none;
-  }
   .welcome-main {
     padding: 35px 25px;
   }
@@ -1770,26 +1758,9 @@ kbd {
   .table-link > svg:last-child:not(:first-child) {
     display: none;
   }
-  .disconnected .sidebar {
-    display: none;
-  }
-  .disconnected .sidebar-resizer {
-    display: none;
-  }
   .welcome-main {
     padding: 30px 22px;
     justify-content: flex-start;
-  }
-  .welcome-context {
-    margin-top: 8px;
-    margin-bottom: 28px;
-  }
-  .welcome-footer {
-    margin-top: 30px;
-    gap: 28px;
-  }
-  .sample-link {
-    flex-wrap: wrap;
   }
   .main-heading {
     padding: 19px 14px 0;
@@ -1836,10 +1807,6 @@ kbd {
   }
   .pagination > div {
     gap: 0;
-  }
-  .statusbar {
-    padding: 0 12px;
-    font-size: 9px;
   }
   .header-actions {
     gap: 8px;

@@ -230,17 +230,6 @@ async function connect(input: ConnectionInput | string) {
     connectionDialog.value?.close()
   }
 }
-async function demo() {
-  await connect({
-    provider: 'demo',
-    host: '',
-    port: 5432,
-    database: '',
-    username: '',
-    password: '',
-    ssl: true,
-  })
-}
 function exportPage() {
   if (!data.value) return
   const blob = new Blob([JSON.stringify(data.value.rows, null, 2)], { type: 'application/json' })
@@ -276,7 +265,7 @@ async function cellSaved() {
           >db</span
         ><span class="brand-caption">Database workspace</span></a
       >
-      <div class="header-actions">
+      <div v-if="session" class="header-actions">
         <span class="read-only"
           ><AppIcon name="lock" :size="13" />{{
             session && session.provider !== 'demo' ? 'Browse & edit' : 'Read only'
@@ -286,8 +275,8 @@ async function cellSaved() {
           class="button secondary small"
           @click="connectionDialog?.showModal()"
         >
-          <AppIcon name="plus" :size="15" /><span>New connection</span></button
-        ><span v-else class="version">Workspace / 01</span>
+          <AppIcon name="plus" :size="15" /><span>New connection</span>
+        </button>
       </div>
     </header>
     <div
@@ -295,7 +284,7 @@ async function cellSaved() {
       :class="{ disconnected: !session, 'resizing-sidebar': sidebar.resizing.value }"
       :style="{ '--sidebar-width': sidebar.width.value + 'px' }"
     >
-      <aside id="database-sidebar" class="sidebar" aria-label="Database explorer">
+      <aside v-if="session" id="database-sidebar" class="sidebar" aria-label="Database explorer">
         <div class="sidebar-label">Connection</div>
         <div class="connection-card">
           <div class="connection-summary">
@@ -377,6 +366,7 @@ async function cellSaved() {
         </div>
       </aside>
       <div
+        v-if="session"
         class="sidebar-resizer"
         role="separator"
         tabindex="0"
@@ -397,9 +387,6 @@ async function cellSaved() {
         @dblclick="sidebar.reset"
       />
       <main v-if="!session" class="welcome-main">
-        <div class="welcome-context">
-          <span class="context-line" />A clear view of what’s inside.
-        </div>
         <ConnectionForm
           :providers="providers"
           :busy="connecting"
@@ -409,11 +396,7 @@ async function cellSaved() {
           @reconnect="connect"
           @remove="db.deleteSavedConnection"
           @connect="connect"
-          @demo="demo"
         />
-        <div class="welcome-footer">
-          <span>PostgreSQL, MySQL, MariaDB & SQL Server.</span><span>Built for a closer look.</span>
-        </div>
       </main>
       <main v-else class="database-main">
         <QueryEditor
@@ -647,16 +630,20 @@ async function cellSaved() {
         </div>
       </main>
     </div>
-    <footer class="statusbar">
-      <span
-        ><span class="status-dot" :class="{ online: session }" />{{
-          session ? 'Workspace ready' : 'Not connected'
-        }}</span
-      ><span v-if="session?.provider === 'demo'">Sample data · No database connection</span
-      ><span v-else
-        >Explicit write confirmation<span class="statusbar-divider">/</span>Credentials handled by
-        backend</span
-      ><span>webdb <span class="muted">v0.1</span></span>
+    <footer class="app-footer">
+      <a class="footer-brand" href="https://vijitek.com">
+        <span>By</span>
+        <span class="footer-logo" aria-hidden="true">
+          <img
+            src="~/assets/images/vijitek-logo.webp"
+            alt=""
+            width="1280"
+            height="1280"
+            decoding="async"
+          />
+        </span>
+        <strong>Vijitek</strong>
+      </a>
     </footer>
     <ContextMenu
       v-if="context"
@@ -715,7 +702,6 @@ async function cellSaved() {
         @reconnect="connect"
         @remove="db.deleteSavedConnection"
         @connect="connect"
-        @demo="demo"
       />
     </dialog>
   </div>

@@ -10,7 +10,6 @@ defineProps<{
 }>()
 const emit = defineEmits<{
   connect: [input: ConnectionInput]
-  demo: []
   reconnect: [id: string]
   remove: [id: string]
 }>()
@@ -190,18 +189,5 @@ function submit() {
       }}</span
       ><AppIcon name="arrow" />
     </button>
-    <div class="form-footnote">
-      <AppIcon name="lock" :size="13" /><span>{{
-        save && savingEnabled
-          ? 'Saved credentials are encrypted on the backend.'
-          : 'Credentials stay in memory for this session.'
-      }}</span>
-    </div>
-    <div class="sample-link">
-      <span>Just looking around?</span
-      ><button type="button" class="text-button" :disabled="busy" @click="emit('demo')">
-        Open sample workspace <span aria-hidden="true">↗</span>
-      </button>
-    </div>
   </form>
 </template>
