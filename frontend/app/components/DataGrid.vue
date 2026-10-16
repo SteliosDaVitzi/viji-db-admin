@@ -15,6 +15,7 @@ const emit = defineEmits<{
   context: [event: MouseEvent, index: number, column?: string]
 }>()
 const selectedCell = ref<{ row: number; column: string | null } | null>(null)
+const headerId = useId()
 watch([() => props.data, () => props.filter], () => {
   selectedCell.value = null
 })
@@ -35,14 +36,15 @@ function matches(row: Record<string, unknown>, filter: string) {
         <tr>
           <th class="row-number">#</th>
           <th
-            v-for="column in data.columns"
+            v-for="(column, index) in data.columns"
             :key="column.name"
             :aria-sort="sort === column.name ? (descending ? 'descending' : 'ascending') : 'none'"
           >
             <button
-              :title="sortable === false ? column.name : `Sort by ${column.name}`"
-              :disabled="sortable === false"
-              @click="emit('sort', column.name)"
+              :aria-label="sortable === false ? column.name : `Sort by ${column.name}`"
+              :aria-describedby="`${headerId}-type-${index}`"
+              :aria-disabled="sortable === false"
+              @click="sortable !== false && emit('sort', column.name)"
             >
               <span class="column-label"
                 ><AppIcon v-if="column.primaryKey" name="key" :size="12" />{{ column.name
@@ -51,7 +53,9 @@ function matches(row: Record<string, unknown>, filter: string) {
                   name="down"
                   :size="12"
                   :class="{ flipped: !descending }" /></span
-              ><span class="column-type">{{ column.dataType }}</span>
+              ><span :id="`${headerId}-type-${index}`" class="column-type" role="tooltip">{{
+                column.dataType
+              }}</span>
             </button>
           </th>
         </tr>

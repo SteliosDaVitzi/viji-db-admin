@@ -427,10 +427,7 @@ async function cellSaved() {
               @keydown="navigateTable($event, index)"
             >
               <AppIcon name="table" :size="14" />
-              <span class="table-tab-title"
-                ><span>{{ table.name }}</span
-                ><small>{{ table.schema }}</small></span
-              >
+              <span class="table-tab-title">{{ table.name }}</span>
             </button>
             <button
               class="query-tab-close"
