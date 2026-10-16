@@ -445,155 +445,100 @@ async function cellSaved() {
           </div>
         </div>
         <div class="table-heading">
-          <AppIcon :name="workspaceTabs.queryActive.value ? 'grid' : 'table'" :size="15" />
-          <h1>
-            {{
-              workspaceTabs.queryActive.value
-                ? 'Query results'
-                : selectedTable?.name || 'Your database'
-            }}
-          </h1>
-          <span class="table-subtitle"
-            >{{ session.database }} / {{ selectedTable?.schema || 'Tables' }}</span
-          >
-          <span v-if="session.readOnly" class="table-subtitle">Read only</span>
-          <div v-if="session.provider !== 'demo' && !session.readOnly" class="mutation-toolbar">
-            <button
-              v-if="editable"
-              class="button secondary small"
-              :disabled="busy || switching"
-              @click="editor = 'insert'"
-            >
-              Insert record
-            </button>
-            <button
-              class="button secondary small"
-              :disabled="busy || switching"
-              @click="editor = 'schema'"
-            >
-              Database changes
-            </button>
-          </div>
-        </div>
-        <div class="view-toolbar">
-          <div class="tabs" role="tablist" aria-label="Table view">
-            <button
-              id="data-tab"
-              role="tab"
-              :aria-selected="tab === 'data'"
-              :class="{ active: tab === 'data' }"
-              @click="tab = 'data'"
-              @keydown.right="tab = 'structure'"
-            >
-              <AppIcon name="table" :size="15" />{{
-                workspaceTabs.queryActive.value ? 'Results' : 'Data'
-              }}<span v-if="data">{{ data.rows.length }}</span></button
-            ><button
-              id="structure-tab"
-              role="tab"
-              :aria-selected="tab === 'structure'"
-              :class="{ active: tab === 'structure' }"
-              @click="tab = 'structure'"
-              @keydown.left="tab = 'data'"
-            >
-              <AppIcon name="grid" :size="15" />Structure<span v-if="data">{{
-                data.columns.length
-              }}</span>
-            </button>
-          </div>
-          <label v-if="tab === 'data'" class="search-box row-search"
-            ><AppIcon name="search" :size="14" /><input
-              v-model="rowFilter"
-              placeholder="Filter this page…"
-              aria-label="Filter rows on this page" /><button
-              v-if="rowFilter"
-              class="icon-button"
-              title="Clear filter"
-              aria-label="Clear filter"
-              @click="rowFilter = ''"
-            >
-              <AppIcon name="close" :size="12" /></button
-          ></label>
-          <div class="table-heading-actions">
-            <button
-              v-if="recordEditable && record && tab === 'data'"
-              class="button secondary small delete-row-button"
-              :disabled="busy || switching"
-              @click="editor = 'delete'"
-            >
-              Delete row
-            </button>
-            <button
-              class="icon-button"
-              title="Refresh rows"
-              aria-label="Refresh rows"
-              :disabled="
-                busy ||
-                switching ||
-                (workspaceTabs.queryActive.value ? !activeQuery : !selectedTable)
-              "
-              @click="db.loadRows"
-            >
-              <AppIcon name="refresh" :size="17" :class="{ spinning: busy }" /></button
-            ><button
-              class="icon-button"
-              title="Export current page as JSON"
-              aria-label="Export current page as JSON"
-              :disabled="!data"
-              @click="exportPage"
-            >
-              <AppIcon name="download" :size="17" />
-            </button>
-          </div>
-          <button
-            v-if="activeQuery"
-            class="text-button back-to-table"
-            :disabled="busy"
-            @click="workspaceTabs.backToTable"
-          >
-            Back to table
-          </button>
-          <div v-if="data" class="pagination toolbar-pagination">
-            <span
-              >{{
-                data.rows.length
-                  ? `${page * pageSize + 1}–${page * pageSize + data.rows.length}`
-                  : '0'
-              }}
-              {{ activeQuery ? 'result rows' : 'rows'
-              }}<span class="pagination-detail"> · {{ data.columns.length }} columns</span></span
-            >
-            <div>
-              <label
-                >Rows per page<select
-                  :value="pageSize"
-                  aria-label="Rows per page"
-                  :disabled="busy"
-                  @change="db.changePageSize(Number(($event.target as HTMLSelectElement).value))"
-                >
-                  <option :value="25">25</option>
-                  <option :value="50">50</option>
-                  <option :value="100">100</option>
-                  <option :value="500">500</option>
-                  <option :value="1000">1000</option>
-                </select></label
-              ><button
-                class="icon-button previous"
-                title="Previous page"
-                aria-label="Previous page"
-                :disabled="page === 0 || busy"
-                @click="db.changePage(page - 1)"
+          <div class="view-toolbar" role="group" aria-label="Table controls">
+            <div class="tabs" role="tablist" aria-label="Table view">
+              <button
+                id="data-tab"
+                role="tab"
+                :aria-selected="tab === 'data'"
+                :class="{ active: tab === 'data' }"
+                @click="tab = 'data'"
+                @keydown.right="tab = 'structure'"
               >
-                <AppIcon name="chevron" :size="15" /></button
-              ><span class="page-number">{{ page + 1 }}</span
+                <AppIcon name="table" :size="15" />{{
+                  workspaceTabs.queryActive.value ? 'Results' : 'Data'
+                }}<span v-if="data">{{ data.rows.length }}</span></button
+              ><button
+                id="structure-tab"
+                role="tab"
+                :aria-selected="tab === 'structure'"
+                :class="{ active: tab === 'structure' }"
+                @click="tab = 'structure'"
+                @keydown.left="tab = 'data'"
+              >
+                <AppIcon name="grid" :size="15" />Structure<span v-if="data">{{
+                  data.columns.length
+                }}</span>
+              </button>
+            </div>
+            <label v-if="tab === 'data'" class="search-box row-search"
+              ><AppIcon name="search" :size="14" /><input
+                v-model="rowFilter"
+                placeholder="Filter this page…"
+                aria-label="Filter rows on this page" /><button
+                v-if="rowFilter"
+                class="icon-button"
+                title="Clear filter"
+                aria-label="Clear filter"
+                @click="rowFilter = ''"
+              >
+                <AppIcon name="close" :size="12" /></button
+            ></label>
+            <div class="table-heading-actions">
+              <button
+                v-if="recordEditable && record && tab === 'data'"
+                class="button secondary small delete-row-button"
+                :disabled="busy || switching"
+                @click="editor = 'delete'"
+              >
+                Delete row
+              </button>
+              <button
+                class="icon-button"
+                title="Refresh rows"
+                aria-label="Refresh rows"
+                :disabled="
+                  busy ||
+                  switching ||
+                  (workspaceTabs.queryActive.value ? !activeQuery : !selectedTable)
+                "
+                @click="db.loadRows"
+              >
+                <AppIcon name="refresh" :size="17" :class="{ spinning: busy }" /></button
               ><button
                 class="icon-button"
-                title="Next page"
-                aria-label="Next page"
-                :disabled="!data.hasMore || busy"
-                @click="db.changePage(page + 1)"
+                title="Export current page as JSON"
+                aria-label="Export current page as JSON"
+                :disabled="!data"
+                @click="exportPage"
               >
-                <AppIcon name="chevron" :size="15" />
+                <AppIcon name="download" :size="17" />
+              </button>
+            </div>
+            <button
+              v-if="activeQuery"
+              class="text-button back-to-table"
+              :disabled="busy"
+              @click="workspaceTabs.backToTable"
+            >
+              Back to table
+            </button>
+            <span v-if="session.readOnly" class="read-only-label">Read only</span>
+            <div v-if="session.provider !== 'demo' && !session.readOnly" class="mutation-toolbar">
+              <button
+                v-if="editable"
+                class="button secondary small"
+                :disabled="busy || switching"
+                @click="editor = 'insert'"
+              >
+                Insert record
+              </button>
+              <button
+                class="button secondary small"
+                :disabled="busy || switching"
+                @click="editor = 'schema'"
+              >
+                Database changes
               </button>
             </div>
           </div>
@@ -671,6 +616,50 @@ async function cellSaved() {
             </div>
           </section>
         </div>
+        <footer v-if="data" class="pagination table-footer" aria-label="Table pagination">
+          <span
+            >{{
+              data.rows.length
+                ? `${page * pageSize + 1}–${page * pageSize + data.rows.length}`
+                : '0'
+            }}
+            {{ activeQuery ? 'result rows' : 'rows'
+            }}<span class="pagination-detail"> · {{ data.columns.length }} columns</span></span
+          >
+          <div>
+            <label
+              >Rows per page<select
+                :value="pageSize"
+                aria-label="Rows per page"
+                :disabled="busy"
+                @change="db.changePageSize(Number(($event.target as HTMLSelectElement).value))"
+              >
+                <option :value="25">25</option>
+                <option :value="50">50</option>
+                <option :value="100">100</option>
+                <option :value="500">500</option>
+                <option :value="1000">1000</option>
+              </select></label
+            ><button
+              class="icon-button previous"
+              title="Previous page"
+              aria-label="Previous page"
+              :disabled="page === 0 || busy"
+              @click="db.changePage(page - 1)"
+            >
+              <AppIcon name="chevron" :size="15" /></button
+            ><span class="page-number">{{ page + 1 }}</span
+            ><button
+              class="icon-button"
+              title="Next page"
+              aria-label="Next page"
+              :disabled="!data.hasMore || busy"
+              @click="db.changePage(page + 1)"
+            >
+              <AppIcon name="chevron" :size="15" />
+            </button>
+          </div>
+        </footer>
       </main>
     </div>
     <ContextMenu
