@@ -9,6 +9,7 @@ import type {
 } from '../../shared/database'
 
 export function useDatabase() {
+  const toast = useToast()
   const providers = ref<Provider[]>([])
   const session = ref<Session | null>(null)
   const databases = ref<string[]>([])
@@ -24,6 +25,14 @@ export function useDatabase() {
   const connecting = ref(false)
   const connectionError = ref('')
   const error = ref('')
+  for (const source of [error, connectionError])
+    watch(
+      source,
+      (failure) => {
+        if (failure) toast.show(failure, 'error')
+      },
+      { flush: 'sync' },
+    )
   const page = ref(0)
   const pageSize = ref(50)
   const sort = ref<string | undefined>()
@@ -197,10 +206,12 @@ export function useDatabase() {
         try {
           await $fetch('/api/connections', { method: 'POST', body: { name: input.saveName } })
           await loadSavedConnections()
+          toast.show('Connection saved securely on the server.')
         } catch (cause) {
           error.value = `Connected, but the connection could not be saved. ${message(cause)}`
         }
       }
+      toast.show('Connected to database.')
       return true
     } catch (cause) {
       connectionError.value = message(cause)
@@ -213,6 +224,7 @@ export function useDatabase() {
     connectionError.value = ''
     try {
       await $fetch(`/api/connections/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      toast.show('Saved connection removed.')
       await loadSavedConnections()
     } catch (cause) {
       connectionError.value = message(cause)
@@ -224,6 +236,7 @@ export function useDatabase() {
       ++requestVersion
       controller?.abort()
       session.value = null
+      toast.show('Disconnected.')
       databases.value = []
       activeQuery.value = null
       tables.value = []
@@ -259,6 +272,7 @@ export function useDatabase() {
     descending.value = false
     page.value = 0
     await loadRows()
+    if (!error.value) toast.show('Query completed.')
   }
   async function browseTable() {
     if (busy.value) return

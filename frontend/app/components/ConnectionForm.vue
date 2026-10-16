@@ -182,7 +182,6 @@ function submit() {
         placeholder="e.g. Local development"
         :disabled="busy"
     /></label>
-    <p v-if="error" class="error-message" role="alert">{{ error }}</p>
     <button class="button primary connect-button" type="submit" :disabled="busy">
       <span>{{
         busy ? 'Connecting…' : form.allDatabases ? 'Connect to instance' : 'Connect to database'

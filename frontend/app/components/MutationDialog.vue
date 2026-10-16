@@ -16,6 +16,7 @@ const dialog = useTemplateRef<HTMLDialogElement>('dialog')
 onMounted(() => dialog.value?.showModal())
 const saving = ref(false)
 const error = ref('')
+useActionFeedback(error)
 const confirmation = ref('')
 const action = ref<'execute' | 'createDatabase' | 'dropDatabase' | 'dropTable'>('execute')
 const name = ref('')
@@ -256,7 +257,6 @@ async function save() {
       <p v-if="mode === 'update'" class="mutation-warning">
         Database triggers and foreign key update rules also apply to this change.
       </p>
-      <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
       <label
         >Type APPLY to confirm this change<input
           v-model="confirmation"

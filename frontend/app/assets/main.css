@@ -368,7 +368,7 @@ svg {
   background: var(--sidebar);
   display: flex;
   flex-direction: column;
-  padding: 25px 14px 0;
+  padding: 12px 14px 0;
   box-shadow: 3px 0 14px #0000000c;
   z-index: 1;
 }
@@ -1689,7 +1689,7 @@ kbd {
     font-size: 21px;
   }
   .sidebar {
-    padding: 18px 8px 0;
+    padding: 10px 8px 0;
   }
   .connection-summary {
     padding: 9px 6px;
@@ -2214,5 +2214,229 @@ kbd {
   }
   .settings-filters select {
     width: 100%;
+  }
+}
+.app-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+.app-shell > .workspace {
+  height: calc(100dvh - 35px);
+  flex: 1 0 auto;
+}
+.app-footer {
+  min-height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 8px 24px;
+  padding: 8px 26px;
+  border-top: 1px solid var(--raised);
+  background: var(--sidebar);
+  color: var(--secondary);
+  font-size: 10px;
+}
+.app-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+.app-footer a,
+.app-footer button {
+  color: inherit;
+  text-decoration: none;
+  font-size: inherit;
+}
+.app-footer a:hover,
+.app-footer button:hover,
+.legal-content a,
+.privacy-policy-links a {
+  color: var(--accent);
+}
+.legal-page {
+  flex: 1;
+}
+.legal-content {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 60px 28px 72px;
+  line-height: 1.8;
+}
+.legal-content h1 {
+  font-size: 32px;
+  line-height: 1.2;
+  margin: 0 0 12px;
+}
+.legal-date {
+  color: var(--muted);
+  font-size: 11px;
+}
+.legal-introduction {
+  color: var(--secondary);
+  font-size: 16px;
+  margin-bottom: 36px;
+}
+.legal-content section {
+  margin-top: 28px;
+}
+.legal-content h2 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.legal-content section p {
+  margin: 0;
+  color: var(--secondary);
+}
+.legal-sources {
+  font-size: 11px;
+}
+.privacy-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  padding: 30px;
+  border: 1px solid var(--raised);
+  border-radius: 12px;
+  color: var(--text);
+  background: var(--sidebar);
+  box-shadow: 0 24px 80px #0006;
+}
+.privacy-dialog::backdrop {
+  background: #080c12b8;
+  backdrop-filter: blur(4px);
+}
+.privacy-emblem {
+  color: var(--accent);
+}
+.privacy-dialog h2 {
+  font-size: 22px;
+  margin: 12px 0;
+}
+.privacy-dialog h3 {
+  font-size: 13px;
+  margin: 22px 0 6px;
+}
+.privacy-dialog p {
+  line-height: 1.7;
+  color: var(--secondary);
+  font-size: 12px;
+}
+.privacy-policy-links {
+  display: flex;
+  gap: 10px 20px;
+  flex-wrap: wrap;
+  margin: 20px 0;
+  font-size: 12px;
+}
+.privacy-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid var(--raised);
+  padding-top: 20px;
+}
+.toast-region {
+  position: fixed;
+  inset: auto 20px 52px auto;
+  width: min(390px, calc(100vw - 32px));
+  max-height: calc(100dvh - 80px);
+  overflow: visible;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  color: var(--text);
+  background: transparent;
+  pointer-events: none;
+}
+.toast-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.toast-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--raised);
+  border-left: 3px solid var(--green);
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: 0 8px 30px #0005;
+  font-size: 12px;
+  line-height: 1.6;
+  pointer-events: auto;
+}
+.toast-message > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--green);
+}
+.toast-message > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.toast-message .icon-button {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+}
+.toast-error {
+  border-left-color: var(--danger);
+}
+.toast-error > svg {
+  color: var(--danger);
+}
+.toast-info {
+  border-left-color: var(--accent);
+}
+.toast-info > svg {
+  color: var(--accent);
+}
+.toast-enter-active,
+.toast-leave-active,
+.toast-move {
+  transition:
+    opacity 180ms ease,
+    transform 220ms ease;
+}
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(24px);
+}
+.toast-leave-active {
+  position: absolute;
+  width: 100%;
+}
+@media (max-width: 620px) {
+  .app-footer {
+    padding: 10px 16px;
+    flex-wrap: wrap;
+  }
+  .app-footer nav {
+    gap: 8px 14px;
+  }
+  .app-shell > .workspace {
+    height: calc(100dvh - 54px);
+  }
+  .legal-content {
+    padding: 36px 22px;
+  }
+  .privacy-dialog {
+    padding: 24px;
+  }
+  .privacy-actions {
+    flex-wrap: wrap;
+  }
+  .toast-region {
+    right: 16px;
+    bottom: 72px;
   }
 }

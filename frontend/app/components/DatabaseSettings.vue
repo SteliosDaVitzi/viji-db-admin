@@ -7,7 +7,12 @@ const result = shallowRef<DatabaseSettings | null>(null)
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
+const toast = useToast()
+watch(error, (message) => {
+  if (message) toast.show(message, 'error')
+})
 const notice = ref('')
+useActionFeedback(notice, 'success')
 const filter = ref('')
 const category = ref('')
 const page = ref(0)
@@ -322,12 +327,6 @@ onScopeDispose(() => controller.abort())
         </button>
       </div>
       <div class="settings-content">
-        <div v-if="error" class="settings-alert" role="alert">
-          {{ error
-          }}<button class="text-button" :disabled="saving" @click="load">Reload settings</button
-          ><small v-if="changeCount">Reloading discards unsaved changes.</small>
-        </div>
-        <p v-if="notice" class="settings-success" role="status">{{ notice }}</p>
         <div v-if="!result.canEdit" class="settings-alert">
           Your database user can inspect settings. Saving requires database ownership or
           administrator privileges.

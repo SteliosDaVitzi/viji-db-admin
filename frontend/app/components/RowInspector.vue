@@ -9,17 +9,13 @@ defineProps<{
 const emit = defineEmits<{ close: []; edit: []; remove: [] }>()
 const dialog = useTemplateRef<HTMLDialogElement>('dialog')
 onMounted(() => dialog.value?.showModal())
-const copied = ref(false)
-const copyError = ref('')
+const toast = useToast()
 async function copy(row: Record<string, unknown>) {
   try {
     await navigator.clipboard.writeText(JSON.stringify(row, null, 2))
-    copied.value = true
-    setTimeout(() => {
-      copied.value = false
-    }, 1800)
+    toast.show('Record copied to clipboard.')
   } catch {
-    copyError.value = 'Clipboard unavailable in this browser.'
+    toast.show('Clipboard unavailable in this browser.', 'error')
   }
 }
 function value(input: unknown) {
@@ -71,11 +67,8 @@ function value(input: unknown) {
             Delete record
           </button>
           <button class="button secondary" @click="copy(row)">
-            <AppIcon :name="copied ? 'check' : 'download'" :size="15" />{{
-              copied ? 'Copied' : 'Copy record as JSON'
-            }}
+            <AppIcon name="download" :size="15" />Copy record as JSON
           </button>
-          <p v-if="copyError" role="status" class="muted">{{ copyError }}</p>
         </div></template
       >
       <div v-else class="inspector-empty">

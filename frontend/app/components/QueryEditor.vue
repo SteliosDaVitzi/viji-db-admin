@@ -39,7 +39,9 @@ const selected = computed(() => saved.value.find((query) => query.id === activeD
 const naming = ref(false)
 const name = ref('')
 const feedback = ref('')
+useActionFeedback(feedback, 'success')
 const storageError = ref('')
+useActionFeedback(storageError)
 const library = useTemplateRef<HTMLDetailsElement>('library')
 const editor = useTemplateRef<{ focus: () => void }>('editor')
 const nameInput = useTemplateRef<HTMLInputElement>('nameInput')
@@ -403,17 +405,12 @@ function run() {
       </button>
       <button class="text-button" type="button" @click="naming = false">Cancel</button>
     </form>
-    <div
-      v-if="(activeQuery && sql.trim() !== activeQuery) || demo || feedback"
-      class="query-footnote"
-    >
+    <div v-if="(activeQuery && sql.trim() !== activeQuery) || demo" class="query-footnote">
       <span v-if="activeQuery && sql.trim() !== activeQuery"
         >Query changed · Run to update results</span
       >
       <span v-else-if="demo">Sample: SELECT * FROM a table, with optional LIMIT</span>
-      <span v-if="feedback" role="status">{{ feedback }}</span>
     </div>
-    <p v-if="storageError" class="query-storage-error" role="alert">{{ storageError }}</p>
     <div
       class="query-resize"
       :class="{ dragging }"
