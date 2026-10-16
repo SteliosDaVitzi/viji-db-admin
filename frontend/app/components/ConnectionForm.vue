@@ -1,7 +1,21 @@
 <script setup lang="ts">
-import type { ConnectionInput, Provider } from '../../shared/database'
-defineProps<{ busy: boolean; error: string; providers: Provider[] }>()
-const emit = defineEmits<{ connect: [input: ConnectionInput]; demo: [] }>()
+import type { ConnectionInput, Provider, SavedConnection } from '../../shared/database'
+defineProps<{
+  busy: boolean
+  error: string
+  providers: Provider[]
+  savedConnections: SavedConnection[]
+  savingEnabled: boolean
+}>()
+const emit = defineEmits<{
+  connect: [input: ConnectionInput]
+  demo: []
+  reconnect: [id: string]
+  remove: [id: string]
+}>()
+const save = ref(false)
+const saveName = ref('')
+const instanceHintId = useId()
 const form = reactive<ConnectionInput>({
   provider: 'postgres',
   host: 'localhost',
@@ -10,9 +24,14 @@ const form = reactive<ConnectionInput>({
   username: '',
   password: '',
   ssl: true,
+  allDatabases: false,
 })
 function submit() {
-  emit('connect', { ...form })
+  emit('connect', {
+    ...form,
+    database: form.allDatabases ? '' : form.database,
+    saveName: save.value ? saveName.value.trim() : undefined,
+  })
   form.password = ''
 }
 </script>
@@ -25,6 +44,33 @@ function submit() {
         <p>Your data. A little more clarity.</p>
       </div>
     </div>
+    <section
+      v-if="savedConnections.length"
+      class="saved-connections"
+      aria-label="Saved connections"
+    >
+      <h2>Saved connections</h2>
+      <div v-for="saved in savedConnections" :key="saved.id" class="saved-connection">
+        <button
+          type="button"
+          class="text-button"
+          :disabled="busy"
+          @click="emit('reconnect', saved.id)"
+        >
+          <AppIcon name="database" :size="14" />{{ saved.name }}
+        </button>
+        <button
+          type="button"
+          class="icon-button"
+          :disabled="busy"
+          :aria-label="`Remove ${saved.name}`"
+          title="Remove saved connection"
+          @click="emit('remove', saved.id)"
+        >
+          <AppIcon name="close" :size="13" />
+        </button>
+      </div>
+    </section>
     <label
       >Database type<select v-model="form.provider" :disabled="busy">
         <option
@@ -56,7 +102,24 @@ function submit() {
           :disabled="busy"
       /></label>
     </div>
-    <label
+    <label class="checkbox-label scope-toggle">
+      <input
+        v-model="form.allDatabases"
+        type="checkbox"
+        role="switch"
+        :disabled="busy"
+        :aria-describedby="instanceHintId"
+      />
+      <span>Browse all databases in this instance</span>
+    </label>
+    <p :id="instanceHintId" class="field-help">
+      {{
+        form.allDatabases
+          ? 'Discover databases your user can access, then choose one in the explorer. Connects through the postgres maintenance database.'
+          : 'Connect to one database by name.'
+      }}
+    </p>
+    <label v-if="!form.allDatabases"
       >Database<input
         v-model.trim="form.database"
         required
@@ -95,13 +158,35 @@ function submit() {
         >?</span
       ></label
     >
+    <label class="checkbox-label save-toggle"
+      ><input v-model="save" type="checkbox" :disabled="busy || !savingEnabled" /><span
+        >Save connection and credentials</span
+      ></label
+    >
+    <p v-if="!savingEnabled" class="field-help">
+      Saving is unavailable. Configure the backend connection vault to enable it.
+    </p>
+    <label v-if="save && savingEnabled"
+      >Connection name<input
+        v-model.trim="saveName"
+        required
+        maxlength="128"
+        placeholder="e.g. Local development"
+        :disabled="busy"
+    /></label>
     <p v-if="error" class="error-message" role="alert">{{ error }}</p>
     <button class="button primary connect-button" type="submit" :disabled="busy">
-      <span>{{ busy ? 'Connecting…' : 'Connect to database' }}</span
+      <span>{{
+        busy ? 'Connecting…' : form.allDatabases ? 'Connect to instance' : 'Connect to database'
+      }}</span
       ><AppIcon name="arrow" />
     </button>
     <div class="form-footnote">
-      <AppIcon name="lock" :size="13" /><span>Credentials stay in memory for this session.</span>
+      <AppIcon name="lock" :size="13" /><span>{{
+        save && savingEnabled
+          ? 'Saved credentials are encrypted on the backend.'
+          : 'Credentials stay in memory for this session.'
+      }}</span>
     </div>
     <div class="sample-link">
       <span>Just looking around?</span

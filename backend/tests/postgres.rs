@@ -26,6 +26,7 @@ async fn postgres_browsing_is_exact_quoted_and_read_only() {
         username: "postgres".into(),
         password: std::env::var("WEBDB_TEST_PG_PASSWORD").expect("set test password"),
         ssl: false,
+        all_databases: false,
     };
     let adapter = PostgresAdapter;
     adapter.test(&input).await.unwrap();

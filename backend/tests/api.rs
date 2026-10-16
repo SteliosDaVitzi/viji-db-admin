@@ -42,6 +42,10 @@ async fn session_browsing_validation_and_disconnect() {
     for (path, status) in [
         ("/api/tables", StatusCode::OK),
         (
+            "/api/tables?database=outside-session",
+            StatusCode::BAD_REQUEST,
+        ),
+        (
             "/api/rows?schema=public&table=customers&pageSize=5",
             StatusCode::OK,
         ),

@@ -22,10 +22,21 @@ pub fn invalid(message: &'static str) -> AppError {
 #[async_trait]
 pub trait DatabaseAdapter: Send + Sync {
     fn provider(&self) -> Provider;
+    async fn databases(&self, input: &ConnectionInput) -> AppResult<Vec<String>> {
+        Ok(vec![input.database.clone()])
+    }
     async fn test(&self, input: &ConnectionInput) -> AppResult<()>;
     async fn tables(&self, input: &ConnectionInput) -> AppResult<Vec<Table>>;
     async fn rows(&self, input: &ConnectionInput, query: &BrowseQuery) -> AppResult<TablePage>;
     async fn query(&self, input: &ConnectionInput, query: &SqlQuery) -> AppResult<TablePage>;
+}
+
+#[async_trait]
+pub trait ConnectionRepository: Send + Sync {
+    async fn list(&self) -> AppResult<Vec<SavedConnection>>;
+    async fn save(&self, name: &str, input: &ConnectionInput) -> AppResult<()>;
+    async fn load(&self, id: &str) -> AppResult<ConnectionInput>;
+    async fn delete(&self, id: &str) -> AppResult<()>;
 }
 
 pub struct DatabaseService {

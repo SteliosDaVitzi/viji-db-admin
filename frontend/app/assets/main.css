@@ -217,7 +217,8 @@ svg {
   min-height: 0;
 }
 .sidebar {
-  width: 246px;
+  width: min(var(--sidebar-width, 320px), max(160px, calc(100vw - 320px)));
+  min-width: 0;
   flex-shrink: 0;
   background: var(--sidebar);
   display: flex;
@@ -232,6 +233,12 @@ svg {
   color: var(--muted);
   padding: 0 9px;
   margin-bottom: 13px;
+}
+.connection-card {
+  background: #22252a;
+  border-radius: 7px;
+  box-shadow: 0 3px 9px #0001;
+  padding-bottom: 1px;
 }
 .connection-summary {
   display: flex;
@@ -283,13 +290,22 @@ svg {
   background: var(--green);
   box-shadow: 0 0 7px #86bea52b;
 }
-.sidebar-section-heading {
+.explorer-toolbar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  font-size: 11px;
-  color: var(--secondary);
-  padding: 22px 8px 8px;
+  gap: 6px;
+  margin-top: 18px;
+}
+.explorer-toolbar .table-search {
+  flex: 1;
+  min-width: 0;
+}
+.explorer-refresh {
+  width: 33px;
+  height: 33px;
+  flex-shrink: 0;
+  background: #22252a;
+  border-radius: 5px;
 }
 .search-box {
   display: flex;
@@ -332,6 +348,7 @@ kbd {
 .table-list {
   overflow: auto;
   flex: 1;
+  min-height: 0;
   margin-top: 20px;
 }
 .schema-label {
@@ -419,7 +436,7 @@ kbd {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: safe center;
   padding: 55px 35px;
   min-width: 0;
   background: radial-gradient(ellipse at 50% 35%, #232a342e, transparent 65%);
@@ -441,6 +458,180 @@ kbd {
   width: 100%;
   max-width: 420px;
   flex-shrink: 0;
+}
+.connection-form .scope-toggle {
+  margin-bottom: 8px;
+}
+.connection-form .save-toggle {
+  margin-bottom: 12px;
+}
+.field-help {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 0 0 18px;
+}
+.scope-toggle input[role='switch'] {
+  appearance: none;
+  width: 30px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--muted);
+  cursor: pointer;
+}
+.scope-toggle input[role='switch']::before {
+  content: '';
+  display: block;
+  width: 10px;
+  height: 10px;
+  margin: 3px;
+  border-radius: 50%;
+  background: var(--secondary);
+}
+.scope-toggle input[role='switch']:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.scope-toggle input[role='switch']:checked::before {
+  transform: translateX(12px);
+  background: var(--sidebar);
+}
+.saved-connections {
+  max-height: 180px;
+  overflow-y: auto;
+  margin-bottom: 22px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--surface);
+}
+.saved-connections h2 {
+  color: var(--secondary);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.saved-connection {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+}
+.saved-connection .text-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.sidebar-resizer {
+  position: relative;
+  flex: 0 0 5px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 2;
+}
+.sidebar-resizer::after {
+  content: '';
+  position: absolute;
+  inset: 0 -3px;
+}
+.sidebar-resizer:hover,
+.sidebar-resizer:focus-visible,
+.resizing-sidebar .sidebar-resizer {
+  background: var(--accent);
+}
+.resizing-sidebar {
+  cursor: col-resize;
+  user-select: none;
+}
+.database-tree {
+  margin-top: 14px;
+}
+.schema-label {
+  width: 100%;
+  text-align: left;
+  border-radius: 5px;
+  padding: 8px;
+}
+.schema-label:hover:not(:disabled) {
+  background: var(--surface);
+}
+.schema-label:disabled {
+  opacity: 1;
+}
+.schema-label .schema-name {
+  margin-left: 0;
+  font-size: inherit;
+  color: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.database-select {
+  position: relative;
+  margin: 0 9px 10px;
+}
+.database-select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px;
+  border: 1px solid var(--raised);
+  border-radius: 5px;
+  background: var(--sidebar);
+  color: var(--text);
+  text-align: left;
+  font-size: 11px;
+}
+.database-select-trigger > span,
+.database-select-menu li > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.database-select-trigger > svg,
+.database-select-menu svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.database-select-trigger:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.database-select-menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  max-height: min(280px, 45dvh);
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--sidebar);
+  border: 1px solid var(--raised);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px #0005;
+}
+.database-select-menu li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 7px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--secondary);
+}
+.database-select-menu li[data-highlighted='true'] {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.database-select-menu li[aria-selected='true'] {
+  color: var(--accent);
 }
 .connection-heading {
   display: flex;
@@ -1359,18 +1550,12 @@ kbd {
   }
 }
 @media (min-width: 1600px) {
-  .sidebar {
-    width: 265px;
-  }
   .data-grid td {
     padding-top: 14px;
     padding-bottom: 14px;
   }
 }
 @media (max-width: 1150px) {
-  .sidebar {
-    width: 215px;
-  }
   .main-heading,
   .table-heading {
     padding-left: 22px;
@@ -1388,9 +1573,6 @@ kbd {
   }
 }
 @media (max-width: 900px) {
-  .sidebar {
-    width: 195px;
-  }
   .read-only {
     display: none;
   }
@@ -1423,7 +1605,6 @@ kbd {
     font-size: 21px;
   }
   .sidebar {
-    width: 145px;
     padding: 18px 8px 0;
   }
   .sidebar-label {
@@ -1446,9 +1627,6 @@ kbd {
     width: 4px;
     height: 4px;
   }
-  .sidebar-section-heading {
-    padding: 20px 5px 6px;
-  }
   .table-search {
     padding: 0 7px;
     gap: 4px;
@@ -1465,6 +1643,9 @@ kbd {
     display: none;
   }
   .disconnected .sidebar {
+    display: none;
+  }
+  .disconnected .sidebar-resizer {
     display: none;
   }
   .welcome-main {

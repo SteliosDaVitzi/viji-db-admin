@@ -10,12 +10,19 @@ export interface ConnectionInput {
   username: string
   password: string
   ssl: boolean
+  allDatabases?: boolean
+  saveName?: string
+}
+export interface SavedConnection {
+  id: string
+  name: string
 }
 export interface Session {
   provider: string
   database: string
   host: string
   expiresIn: number
+  allDatabases: boolean
 }
 export interface TableInfo {
   schema: string

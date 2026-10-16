@@ -12,3 +12,7 @@ obj/
 *.log
 test-results/
 target/
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*

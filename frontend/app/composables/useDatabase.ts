@@ -4,12 +4,18 @@ import type {
   Session,
   TableInfo,
   TablePage,
+  SavedConnection,
 } from '../../shared/database'
 
 export function useDatabase() {
   const providers = ref<Provider[]>([])
   const session = ref<Session | null>(null)
+  const databases = ref<string[]>([])
+  const savedConnections = ref<SavedConnection[]>([])
+  const savingEnabled = ref(false)
+  const switching = ref(false)
   const tables = ref<TableInfo[]>([])
+  const tablesLoading = ref(false)
   const selectedTable = ref<TableInfo | null>(null)
   const data = shallowRef<TablePage | null>(null)
   const selectedRow = ref<number | null>(null)
@@ -69,6 +75,7 @@ export function useDatabase() {
     }
   }
   async function chooseTable(table: TableInfo) {
+    if (switching.value) return
     activeQuery.value = null
     selectedTable.value = table
     page.value = 0
@@ -77,6 +84,7 @@ export function useDatabase() {
     await loadRows()
   }
   async function loadTables() {
+    tablesLoading.value = true
     try {
       const currentSession = session.value
       const result = await $fetch<TableInfo[]>('/api/tables')
@@ -85,6 +93,7 @@ export function useDatabase() {
       const previous = selectedTable.value
       const table =
         tables.value.find((t) => t.schema === previous?.schema && t.name === previous.name) ||
+        tables.value.find((t) => t.schema === 'public') ||
         tables.value[0]
       if (table) await chooseTable(table)
       else {
@@ -93,20 +102,91 @@ export function useDatabase() {
       }
     } catch (cause) {
       error.value = message(cause)
+    } finally {
+      tablesLoading.value = false
     }
   }
-  async function connect(input: ConnectionInput) {
+  function clearWorkspace() {
+    ++requestVersion
+    controller?.abort()
+    tables.value = []
+    selectedTable.value = null
+    data.value = null
+    selectedRow.value = null
+    activeQuery.value = null
+    error.value = ''
+    busy.value = false
+    page.value = 0
+    sort.value = undefined
+    descending.value = false
+  }
+  async function loadSavedConnections() {
+    const result = await $fetch<{ enabled: boolean; connections: SavedConnection[] }>(
+      '/api/connections',
+    )
+    savedConnections.value = result.connections
+    savingEnabled.value = result.enabled
+  }
+  async function loadDatabases() {
+    databases.value = session.value?.allDatabases
+      ? await $fetch<string[]>('/api/databases')
+      : session.value
+        ? [session.value.database]
+        : []
+  }
+  async function refreshExplorer() {
+    let discoveryError = ''
+    try {
+      await loadDatabases()
+    } catch (cause) {
+      discoveryError = message(cause)
+    }
+    await loadTables()
+    if (discoveryError) error.value = discoveryError
+  }
+  async function switchDatabase(database: string, table?: TableInfo) {
+    if (switching.value || connecting.value || database === session.value?.database) return
+    switching.value = true
+    clearWorkspace()
+    try {
+      session.value = await $fetch<Session>('/api/databases', {
+        method: 'POST',
+        body: { database },
+      })
+      selectedTable.value = table || null
+    } catch (cause) {
+      error.value = message(cause)
+    } finally {
+      switching.value = false
+    }
+    if (!error.value) await loadTables()
+  }
+  async function chooseDatabaseTable(database: string, table: TableInfo) {
+    if (switching.value || connecting.value) return
+    if (database === session.value?.database || !session.value?.allDatabases)
+      await chooseTable(table)
+    else await switchDatabase(database, table)
+  }
+  async function connect(input: ConnectionInput | string) {
     connecting.value = true
     connectionError.value = ''
     try {
-      session.value = await $fetch<Session>('/api/session', { method: 'POST', body: input })
-      ++requestVersion
-      controller?.abort()
-      data.value = null
-      selectedRow.value = null
-      activeQuery.value = null
-      error.value = ''
-      await loadTables()
+      session.value =
+        typeof input === 'string'
+          ? await $fetch<Session>(`/api/connections/${encodeURIComponent(input)}/connect`, {
+              method: 'POST',
+            })
+          : await $fetch<Session>('/api/session', { method: 'POST', body: input })
+      clearWorkspace()
+      await refreshExplorer()
+      if (typeof input !== 'string' && input.saveName) {
+        try {
+          await $fetch('/api/connections', { method: 'POST', body: { name: input.saveName } })
+          await loadSavedConnections()
+        } catch (cause) {
+          error.value = `Connected, but the connection could not be saved. ${message(cause)}`
+        }
+      }
       return true
     } catch (cause) {
       connectionError.value = message(cause)
@@ -115,12 +195,22 @@ export function useDatabase() {
       connecting.value = false
     }
   }
+  async function deleteSavedConnection(id: string) {
+    connectionError.value = ''
+    try {
+      await $fetch(`/api/connections/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      await loadSavedConnections()
+    } catch (cause) {
+      connectionError.value = message(cause)
+    }
+  }
   async function disconnect() {
     try {
       await $fetch('/api/session', { method: 'DELETE' })
       ++requestVersion
       controller?.abort()
       session.value = null
+      databases.value = []
       activeQuery.value = null
       tables.value = []
       selectedTable.value = null
@@ -164,6 +254,11 @@ export function useDatabase() {
   }
   onMounted(async () => {
     try {
+      await loadSavedConnections()
+    } catch {
+      /* Saving stays disabled if unavailable. */
+    }
+    try {
       providers.value = await $fetch<Provider[]>('/api/providers')
     } catch {
       /* Connection action presents an actionable error. */
@@ -172,7 +267,7 @@ export function useDatabase() {
       const restored = await $fetch<Session>('/api/session')
       if (!session.value && !connecting.value) {
         session.value = restored
-        await loadTables()
+        await refreshExplorer()
       }
     } catch {
       /* No session yet, or the backend restarted. */
@@ -181,8 +276,17 @@ export function useDatabase() {
   onScopeDispose(() => controller?.abort())
   return {
     providers,
+    databases,
+    savedConnections,
+    savingEnabled,
+    switching,
+    switchDatabase,
+    chooseDatabaseTable,
+    refreshExplorer,
+    deleteSavedConnection,
     session,
     tables,
+    tablesLoading,
     selectedTable,
     data,
     selectedRow,

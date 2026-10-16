@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionInput {
     pub provider: String,
@@ -11,6 +11,8 @@ pub struct ConnectionInput {
     pub username: String,
     pub password: String,
     pub ssl: bool,
+    #[serde(default)]
+    pub all_databases: bool,
 }
 
 impl ConnectionInput {
@@ -30,7 +32,7 @@ impl ConnectionInput {
         if self.port == 0 {
             return Err("Enter a port between 1 and 65535.");
         }
-        if self.database.trim().is_empty()
+        if (!self.all_databases && self.database.trim().is_empty())
             || self.username.trim().is_empty()
             || self.database.len() > 128
             || self.username.len() > 128
@@ -40,6 +42,27 @@ impl ConnectionInput {
         }
         Ok(())
     }
+}
+
+#[derive(Serialize)]
+pub struct SavedConnection {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+pub struct SaveConnection {
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+pub struct SelectDatabase {
+    pub database: String,
+}
+
+#[derive(Default, Deserialize)]
+pub struct DatabaseTablesQuery {
+    pub database: Option<String>,
 }
 
 #[derive(Serialize)]

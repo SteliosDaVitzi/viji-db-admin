@@ -50,7 +50,11 @@ async fn connect(input: &ConnectionInput) -> AppResult<PgConnection> {
     let options = PgConnectOptions::from_str("postgresql://")?
         .host(&input.host)
         .port(input.port)
-        .database(&input.database)
+        .database(if input.database.is_empty() && input.all_databases {
+            "postgres"
+        } else {
+            &input.database
+        })
         .username(&input.username)
         .password(&input.password)
         .ssl_mode(if input.ssl {
@@ -89,6 +93,14 @@ async fn begin(connection: &mut PgConnection) -> AppResult<sqlx::Transaction<'_,
 
 #[async_trait]
 impl DatabaseAdapter for PostgresAdapter {
+    async fn databases(&self, input: &ConnectionInput) -> AppResult<Vec<String>> {
+        let mut connection = connect(input).await?;
+        let mut tx = begin(&mut connection).await?;
+        let names = sqlx::query_scalar("SELECT datname::text FROM pg_database WHERE NOT datistemplate AND datallowconn AND has_database_privilege(datname, 'CONNECT') ORDER BY datname")
+            .fetch_all(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(names)
+    }
     fn provider(&self) -> Provider {
         Provider {
             id: "postgres",

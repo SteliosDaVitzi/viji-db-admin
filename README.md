@@ -19,7 +19,33 @@ npm run dev
 
 Open **http://127.0.0.1:34616**. The Rust API listens on `127.0.0.1:34617`. The first Rust build downloads and compiles dependencies. Alternatively run `npm run dev:backend` and `npm run dev:frontend` in separate terminals.
 
-Use **Open sample workspace** to try browsing immediately. To connect PostgreSQL, enter its host, port, database, username, and password. TLS certificate and hostname verification are enabled by default. A local PostgreSQL instance without TLS needs the checkbox turned off. Docker connections use the host as seen from the backend container: `host.docker.internal` for a database on the Windows host, or `postgres` for the optional Compose sample service.
+Use **Open sample workspace** to try browsing immediately. To connect PostgreSQL, enter its host, port, username, and password. Enter a database name for a single database, or enable **Browse all databases in this instance** to hide that field. Instance mode connects through the `postgres` maintenance database (the account needs CONNECT access to it), discovers non-template databases with CONNECT permission, and lists databases as expandable branches in the left drawer. Expand several databases to inspect their schemas and tables without changing the active database. Choosing a table in another database switches the active database after checking access; table results and query tabs reset for the new database. PostgreSQL permissions still govern which tables can be read. The drawer starts at 320px on desktop; drag its right edge to resize, or focus the separator and use Left/Right arrows (Shift for larger steps), Home/End for the bounds, and double-click to reset. Width is constrained on smaller screens. TLS certificate and hostname verification are enabled by default. A local PostgreSQL instance without TLS needs the checkbox turned off. Docker connections use the host as seen from the backend container: `host.docker.internal` for a database on the Windows host, or `postgres` for the optional Compose sample service.
+
+## Saved connections
+
+Enable **Save connection and credentials** to name a connection after it successfully connects. Saved connections appear on the setup screen and in **New connection**, with actions to reconnect or remove them. Reconnect runs on the backend and never returns a saved password to the browser. Disconnect ends the active session; removing a saved entry deletes its stored copy and leaves an active session running.
+
+Saving is disabled until the backend has both `WEBDB_VAULT_KEY` (32 random bytes encoded as 64 hex characters) and `WEBDB_STORE_PATH` (a writable SQLite file in an existing private directory). Configuration errors fail startup. The database stores connection names as plaintext labels and encrypts all connection details using AES-256-GCM, fresh random nonces, and the connection ID as authenticated data. There is no browser credential persistence. Keep the encryption key separate from the SQLite file and its backups; losing the key makes saved credentials unrecoverable. Use names without secrets and restrict the directory and key to your OS account.
+
+For local PowerShell development, start in the project root. This creates a new key only if one does not already exist; use the same private key file on later starts:
+
+```powershell
+$vaultDirectory = Join-Path $env:LOCALAPPDATA 'WebDB'
+New-Item -ItemType Directory -Force -Path $vaultDirectory | Out-Null
+$vaultKeyFile = Join-Path $vaultDirectory 'vault.key'
+if (!(Test-Path -LiteralPath $vaultKeyFile)) {
+  $vaultKeyBytes = New-Object byte[] 32
+  $vaultRng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  $vaultRng.GetBytes($vaultKeyBytes)
+  $vaultRng.Dispose()
+  [System.IO.File]::WriteAllText($vaultKeyFile, [BitConverter]::ToString($vaultKeyBytes).Replace('-', '').ToLowerInvariant())
+}
+$env:WEBDB_VAULT_KEY = [System.IO.File]::ReadAllText($vaultKeyFile).Trim()
+$env:WEBDB_STORE_PATH = Join-Path $vaultDirectory 'connections.sqlite'
+npm run dev
+```
+
+The dev launcher inherits these variables; it does not load them from `.env`. For containers, inject the key with your deployment secret manager and set the store path to a persistent writable mount owned by UID 10001 in production. The default Compose files leave saving disabled and keep the production filesystem read only; provision that mount before enabling it. Keep the API private: saved connections belong to the local tool, with no separate per-user accounts or authorization.
 
 ## Architecture
 
@@ -34,12 +60,13 @@ backend/src/
   application.rs       Adapter contract, provider registry, sanitized errors
   adapters/postgres.rs  PostgreSQL connection, metadata and read-only reads
   adapters/demo.rs      Deterministic sample workspace
+  adapters/vault.rs     SQLite storage with authenticated credential encryption
   sessions.rs          Bounded, expiring in-memory connection sessions
   lib.rs               HTTP transport and dependency composition
   main.rs              Process configuration and shutdown
 ```
 
-To add a database, implement `DatabaseAdapter`, register it in `router()`, and add any provider-specific form fields. Supported providers are fetched from `/api/providers`. No ORM, application database, migrations, or automatic changes to connected database schemas are needed.
+To add a database, implement `DatabaseAdapter`, register it in `router()`, and add any provider-specific form fields. Supported providers are fetched from `/api/providers`. Saved connections use a separate local SQLite application store behind the `ConnectionRepository` contract. Its schema initializes automatically; connected database schemas are never changed.
 
 ## Commands and checks
 
@@ -96,7 +123,7 @@ All scripts support `--help`. `migrate` reports that there are no migrations. Pr
 
 ## Security and scope
 
-WebDB is a local, single-user tool. The browser sends credentials only to the local API through the Nuxt proxy; no third-party services, font CDNs, analytics, or persistent browser credential storage are used. Password fields clear on submission. Credentials stay in bounded server memory, expire after eight hours, and are removed on disconnect or process exit; a periodic cleanup removes expired entries within a minute. Sessions use random opaque IDs in `HttpOnly`, `SameSite=Strict` cookies. Refreshing the page restores a valid session without returning its password.
+WebDB is a local, single-user tool. The browser sends credentials only to the local API through the Nuxt proxy; no third-party services, font CDNs, analytics, or persistent browser credential storage are used. Password fields clear on submission. Unless you opt into saving a connection, credentials stay in bounded server memory, expire after eight hours, and are removed on disconnect or process exit; a periodic cleanup removes expired entries within a minute. Sessions use random opaque IDs in `HttpOnly`, `SameSite=Strict` cookies. Refreshing the page restores a valid session without returning its password.
 
 Queries use read-only transactions, statement and lock timeouts, quoted identifiers, bound parameters, and at most 100 rows per page. Use a PostgreSQL account with only the necessary `SELECT` privileges. Large integers and decimals are returned as strings. JSON and array columns retain their database text representation to preserve nested numeric precision. Sorting uses native database values. Pagination is offset-based: concurrent changes can shift rows, and views without a sortable unique key have no guaranteed stable order. Large cell contents are returned in full; page size is not a response-byte limit.
 

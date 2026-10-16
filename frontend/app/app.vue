@@ -4,7 +4,6 @@ const db = useDatabase()
 const {
   providers,
   session,
-  tables,
   selectedTable,
   data,
   selectedRow,
@@ -17,8 +16,15 @@ const {
   sort,
   descending,
   activeQuery,
+  databases,
+  tables,
+  tablesLoading,
+  savedConnections,
+  savingEnabled,
+  switching,
 } = db
-const tableFilter = ref('')
+const sidebar = useSidebarResize()
+const explorerKey = ref(0)
 const rowFilter = ref('')
 const tab = ref<'data' | 'structure'>('data')
 const queryWorkspaceKey = ref(0)
@@ -79,12 +85,6 @@ async function runQuery(sql: string) {
   rowFilter.value = ''
   await db.runQuery(sql)
 }
-const filteredTables = computed(() =>
-  tables.value.filter((t) =>
-    `${t.schema}.${t.name}`.toLowerCase().includes(tableFilter.value.toLowerCase()),
-  ),
-)
-const schemas = computed(() => [...new Set(filteredTables.value.map((t) => t.schema))])
 const record = computed(() =>
   selectedRow.value === null ? null : data.value?.rows[selectedRow.value] || null,
 )
@@ -92,8 +92,11 @@ watch(selectedTable, () => {
   rowFilter.value = ''
   tab.value = 'data'
 })
-async function connect(input: ConnectionInput) {
-  if (await db.connect(input)) connectionDialog.value?.close()
+async function connect(input: ConnectionInput | string) {
+  if (await db.connect(input)) {
+    explorerKey.value++
+    connectionDialog.value?.close()
+  }
 }
 async function demo() {
   await connect({
@@ -140,83 +143,55 @@ function inspectRow(index: number) {
         ><span v-else class="version">Workspace / 01</span>
       </div>
     </header>
-    <div class="app-body" :class="{ disconnected: !session }">
-      <aside class="sidebar" aria-label="Database tables">
+    <div
+      class="app-body"
+      :class="{ disconnected: !session, 'resizing-sidebar': sidebar.resizing.value }"
+      :style="{ '--sidebar-width': sidebar.width.value + 'px' }"
+    >
+      <aside id="database-sidebar" class="sidebar" aria-label="Database explorer">
         <div class="sidebar-label">Connection</div>
-        <div class="connection-summary">
-          <span class="provider-mark"><AppIcon name="database" :size="19" /></span>
-          <div>
-            <strong>{{ session?.database || 'No connection' }}</strong
-            ><span>{{
-              session
-                ? session.provider === 'demo'
-                  ? 'Sample workspace'
-                  : `PostgreSQL · ${session.host}`
-                : 'Connect to get started'
-            }}</span>
+        <div class="connection-card">
+          <div class="connection-summary">
+            <span class="provider-mark"><AppIcon name="database" :size="19" /></span>
+            <div>
+              <strong>{{
+                session?.allDatabases ? session.host : session?.database || 'No connection'
+              }}</strong
+              ><span>{{
+                session
+                  ? session.provider === 'demo'
+                    ? 'Sample workspace'
+                    : session.allDatabases
+                      ? 'PostgreSQL instance'
+                      : `PostgreSQL · ${session.host}`
+                  : 'Connect to get started'
+              }}</span>
+            </div>
+            <span
+              class="status-dot"
+              :class="{ online: session }"
+              :title="session ? 'Connected' : 'Disconnected'"
+            />
           </div>
-          <span
-            class="status-dot"
-            :class="{ online: session }"
-            :title="session ? 'Connected' : 'Disconnected'"
+          <DatabaseSelect
+            v-if="session"
+            :databases="session.allDatabases ? databases : [session.database]"
+            :model-value="session.database"
+            :disabled="connecting || switching || tablesLoading"
+            @update:model-value="db.switchDatabase($event)"
           />
         </div>
-        <template v-if="session"
-          ><div class="sidebar-section-heading">
-            <span>Explorer</span
-            ><button
-              class="icon-button"
-              title="Refresh table list"
-              aria-label="Refresh table list"
-              :disabled="busy || connecting"
-              @click="db.loadTables"
-            >
-              <AppIcon name="refresh" :size="14" />
-            </button>
-          </div>
-          <label class="search-box table-search"
-            ><AppIcon name="search" :size="15" /><input
-              v-model="tableFilter"
-              placeholder="Find a table…"
-              aria-label="Find a table"
-            /><kbd>/</kbd></label
-          >
-          <nav class="table-list" aria-label="Tables">
-            <div v-for="schema in schemas" :key="schema" class="schema-group">
-              <div class="schema-label">
-                <AppIcon name="down" :size="12" />{{ schema
-                }}<span>{{ filteredTables.filter((t) => t.schema === schema).length }}</span>
-              </div>
-              <button
-                v-for="table in filteredTables.filter((t) => t.schema === schema)"
-                :key="`${table.schema}.${table.name}`"
-                class="table-link"
-                :class="{
-                  active:
-                    selectedTable?.schema === table.schema && selectedTable?.name === table.name,
-                }"
-                :aria-current="
-                  selectedTable?.schema === table.schema && selectedTable?.name === table.name
-                    ? 'true'
-                    : undefined
-                "
-                @click="db.chooseTable(table)"
-              >
-                <AppIcon name="table" :size="15" /><span>{{ table.name }}</span
-                ><AppIcon
-                  v-if="
-                    selectedTable?.name === table.name && selectedTable?.schema === table.schema
-                  "
-                  name="chevron"
-                  :size="12"
-                />
-              </button>
-            </div>
-            <p v-if="!filteredTables.length" class="sidebar-empty">
-              {{ tableFilter ? 'No matching tables.' : 'No accessible tables found.' }}
-            </p>
-          </nav></template
-        >
+        <DatabaseExplorer
+          v-if="session"
+          :key="explorerKey"
+          :tables="tables"
+          :loading="tablesLoading"
+          :active-database="session.database"
+          :selected-table="selectedTable"
+          :disabled="connecting || switching"
+          @choose="db.chooseDatabaseTable"
+          @refresh="db.refreshExplorer"
+        />
         <div v-else class="sidebar-placeholder">
           <AppIcon name="table" :size="22" />
           <p>Your tables will<br />appear here.</p>
@@ -231,6 +206,7 @@ function inspectRow(index: number) {
               class="icon-button"
               title="Disconnect"
               aria-label="Disconnect"
+              :disabled="connecting || switching"
               @click="db.disconnect"
             >
               <AppIcon name="disconnect" :size="15" /></button></template
@@ -239,6 +215,26 @@ function inspectRow(index: number) {
           >
         </div>
       </aside>
+      <div
+        class="sidebar-resizer"
+        role="separator"
+        tabindex="0"
+        aria-label="Resize database explorer"
+        aria-controls="database-sidebar"
+        aria-orientation="vertical"
+        :aria-valuemin="sidebar.minimum.value"
+        :aria-valuemax="sidebar.maximum.value"
+        :aria-valuenow="sidebar.width.value"
+        :aria-valuetext="sidebar.width.value + ' pixels'"
+        title="Drag to resize. Arrow keys resize; double-click resets."
+        @pointerdown="sidebar.start"
+        @pointermove="sidebar.move"
+        @pointerup="sidebar.stop"
+        @pointercancel="sidebar.stop"
+        @lostpointercapture="sidebar.stop"
+        @keydown="sidebar.keydown"
+        @dblclick="sidebar.reset"
+      />
       <main v-if="!session" class="welcome-main">
         <div class="welcome-context">
           <span class="context-line" />A clear view of what’s inside.
@@ -247,6 +243,10 @@ function inspectRow(index: number) {
           :providers="providers"
           :busy="connecting"
           :error="connectionError"
+          :saved-connections="savedConnections"
+          :saving-enabled="savingEnabled"
+          @reconnect="connect"
+          @remove="db.deleteSavedConnection"
           @connect="connect"
           @demo="demo"
         />
@@ -258,7 +258,7 @@ function inspectRow(index: number) {
         <QueryEditor
           :key="queryWorkspaceKey"
           :initial-sql="initialSql"
-          :busy="busy"
+          :busy="busy || switching"
           :active-query="activeQuery"
           :demo="session.provider === 'demo'"
           @run="runQuery"
@@ -465,7 +465,8 @@ function inspectRow(index: number) {
         }}</span
       ><span v-if="session?.provider === 'demo'">Sample data · No database connection</span
       ><span v-else
-        >Read-only access<span class="statusbar-divider">/</span>Session-only credentials</span
+        >Read-only access<span class="statusbar-divider">/</span>Credentials handled by
+        backend</span
       ><span>webdb <span class="muted">v0.1</span></span>
     </footer>
     <dialog ref="connectionDialog" class="connection-dialog" aria-label="Connect to a database">
@@ -480,6 +481,10 @@ function inspectRow(index: number) {
         :providers="providers"
         :busy="connecting"
         :error="connectionError"
+        :saved-connections="savedConnections"
+        :saving-enabled="savingEnabled"
+        @reconnect="connect"
+        @remove="db.deleteSavedConnection"
         @connect="connect"
         @demo="demo"
       />
