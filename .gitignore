@@ -12,6 +12,7 @@ obj/
 *.log
 test-results/
 target/
+backend/target-validation/
 *.sqlite
 *.sqlite-*
 *.sqlite3

@@ -3,6 +3,10 @@ services:
     build: ./backend
     environment:
       WEBDB_SECURE_COOKIES: ${WEBDB_SECURE_COOKIES:-false}
+      WEBDB_STORE_PATH: /var/lib/webdb/connections.sqlite
+      WEBDB_VAULT_KEY: ${WEBDB_VAULT_KEY:?Set WEBDB_VAULT_KEY in .env to a persistent 64-character hex key}
+    volumes:
+      - prod-connections:/var/lib/webdb
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
@@ -24,3 +28,5 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+volumes:
+  prod-connections:

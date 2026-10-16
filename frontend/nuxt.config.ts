@@ -18,7 +18,9 @@ export default defineNuxtConfig({
   app: {
     head: {
       title: 'WebDB — a quiet place for your data',
-      meta: [{ name: 'description', content: 'A focused, read-only database workspace.' }],
+      meta: [
+        { name: 'description', content: 'Browse, edit, and manage your PostgreSQL databases.' },
+      ],
     },
   },
 })

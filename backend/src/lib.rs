@@ -110,6 +110,7 @@ fn router_with_services(
         .route("/api/connections/{id}/connect", post(connect_saved))
         .route("/api/rows", get(rows))
         .route("/api/query", post(query))
+        .route("/api/mutations", post(mutate))
         .layer(DefaultBodyLimit::max(16 * 1024))
         .layer(middleware::from_fn(security_headers))
         .with_state(state)
@@ -347,6 +348,28 @@ async fn query(
             .database
             .resolve(&input.provider)?
             .query(&input, &query)
+            .await?,
+    ))
+}
+
+async fn mutate(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    Json(request): Json<MutationRequest>,
+) -> AppResult<Json<MutationResult>> {
+    let input = state.sessions.get(session_token(&headers))?;
+    if request.confirmation != "APPLY" {
+        return Err(invalid("Review the change and type APPLY to confirm."));
+    }
+    let _permit = state
+        .operations
+        .try_acquire()
+        .map_err(|_| AppError(ErrorKind::Busy, "Too many requests. Try again shortly."))?;
+    Ok(Json(
+        state
+            .database
+            .resolve(&input.provider)?
+            .mutate(&input, &request.mutation)
             .await?,
     ))
 }

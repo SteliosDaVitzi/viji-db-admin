@@ -4,8 +4,9 @@ defineProps<{
   row: Record<string, unknown> | null
   columns: ColumnInfo[]
   rowNumber: number | null
+  editable?: boolean
 }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; edit: []; remove: [] }>()
 const dialog = useTemplateRef<HTMLDialogElement>('dialog')
 onMounted(() => dialog.value?.showModal())
 const copied = ref(false)
@@ -52,7 +53,8 @@ function value(input: unknown) {
       </div>
       <template v-if="row"
         ><div class="record-meta">
-          <span class="tiny-dot" />Row {{ rowNumber }}<span>Read only</span>
+          <span class="tiny-dot" />Row {{ rowNumber
+          }}<span>{{ editable ? 'Record' : 'Read only' }}</span>
         </div>
         <dl class="record-fields">
           <div v-for="column in columns" :key="column.name">
@@ -64,6 +66,10 @@ function value(input: unknown) {
           </div>
         </dl>
         <div class="inspector-footer">
+          <button v-if="editable" class="button" @click="emit('edit')">Edit record</button>
+          <button v-if="editable" class="button secondary" @click="emit('remove')">
+            Delete record
+          </button>
           <button class="button secondary" @click="copy(row)">
             <AppIcon :name="copied ? 'check' : 'download'" :size="15" />{{
               copied ? 'Copied' : 'Copy record as JSON'

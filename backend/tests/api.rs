@@ -33,6 +33,20 @@ async fn session_browsing_validation_and_disconnect() {
         .next()
         .unwrap()
         .to_string();
+    for (token, confirmation, expected) in [
+        ("", "APPLY", StatusCode::UNAUTHORIZED),
+        (cookie.as_str(), "", StatusCode::BAD_REQUEST),
+        (cookie.as_str(), "APPLY", StatusCode::BAD_REQUEST),
+    ] {
+        let response = app.clone().oneshot(
+            Request::post("/api/mutations").header("content-type", "application/json")
+                .header("cookie", token)
+                .body(Body::from(serde_json::json!({"confirmation":confirmation,"mutation":{"action":"execute","sql":"DROP TABLE customers"}}).to_string())).unwrap()
+        ).await.unwrap();
+        assert_eq!(response.status(), expected);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert!(!String::from_utf8_lossy(&body).contains("password"));
+    }
     assert!(
         connected.headers()["set-cookie"]
             .to_str()

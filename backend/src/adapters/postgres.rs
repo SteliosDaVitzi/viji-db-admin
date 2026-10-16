@@ -46,7 +46,7 @@ fn query_error(error: sqlx::Error) -> AppError {
     }
 }
 
-async fn connect(input: &ConnectionInput) -> AppResult<PgConnection> {
+pub(super) async fn connect(input: &ConnectionInput) -> AppResult<PgConnection> {
     let options = PgConnectOptions::from_str("postgresql://")?
         .host(&input.host)
         .port(input.port)
@@ -93,6 +93,13 @@ async fn begin(connection: &mut PgConnection) -> AppResult<sqlx::Transaction<'_,
 
 #[async_trait]
 impl DatabaseAdapter for PostgresAdapter {
+    async fn mutate(
+        &self,
+        input: &ConnectionInput,
+        mutation: &Mutation,
+    ) -> AppResult<MutationResult> {
+        super::postgres_write::mutate(input, mutation).await
+    }
     async fn databases(&self, input: &ConnectionInput) -> AppResult<Vec<String>> {
         let mut connection = connect(input).await?;
         let mut tx = begin(&mut connection).await?;
@@ -148,6 +155,8 @@ impl DatabaseAdapter for PostgresAdapter {
                 data_type: data_type.to_lowercase(),
                 nullable: true,
                 primary_key: false,
+                read_only: true,
+                default_value: None,
             });
         }
         if columns.is_empty() {
@@ -204,7 +213,8 @@ impl DatabaseAdapter for PostgresAdapter {
         let (page, page_size) = query.bounds().map_err(invalid)?;
         let mut connection = connect(input).await?;
         let mut tx = begin(&mut connection).await?;
-        let metadata = sqlx::query(r#"SELECT c.column_name, c.data_type, c.is_nullable,
+        let metadata = sqlx::query(r#"SELECT c.column_name, c.data_type, c.is_nullable, c.column_default,
+          (c.is_generated='ALWAYS' OR COALESCE(c.identity_generation='ALWAYS', false)) AS read_only,
           EXISTS (SELECT 1 FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage k
           ON tc.constraint_catalog=k.constraint_catalog AND tc.constraint_schema=k.constraint_schema AND tc.constraint_name=k.constraint_name
           WHERE tc.constraint_type='PRIMARY KEY' AND tc.table_schema=c.table_schema AND tc.table_name=c.table_name AND k.table_schema=c.table_schema AND k.table_name=c.table_name AND k.column_name=c.column_name) AS primary_key
@@ -223,6 +233,8 @@ impl DatabaseAdapter for PostgresAdapter {
                 data_type: r.get("data_type"),
                 nullable: r.get::<String, _>("is_nullable") == "YES",
                 primary_key: r.get("primary_key"),
+                read_only: r.get("read_only"),
+                default_value: r.get("column_default"),
             })
             .collect();
         if let Some(sort) = &query.sort

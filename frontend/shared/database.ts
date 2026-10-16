@@ -34,6 +34,8 @@ export interface ColumnInfo {
   dataType: string
   nullable: boolean
   primaryKey: boolean
+  readOnly: boolean
+  defaultValue: string | null
 }
 export interface TablePage {
   columns: ColumnInfo[]
@@ -42,3 +44,17 @@ export interface TablePage {
   page: number
   pageSize: number
 }
+
+export type Mutation =
+  | { action: 'insert'; schema: string; table: string; values: Record<string, string | null> }
+  | {
+      action: 'update'
+      schema: string
+      table: string
+      original: Record<string, unknown>
+      values: Record<string, string | null>
+    }
+  | { action: 'delete'; schema: string; table: string; original: Record<string, unknown> }
+  | { action: 'createDatabase' | 'dropDatabase'; name: string }
+  | { action: 'dropTable'; schema: string; table: string }
+  | { action: 'execute'; sql: string }

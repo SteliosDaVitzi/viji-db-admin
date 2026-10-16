@@ -35,6 +35,8 @@ fn dataset(table: &str) -> Option<DemoDataset> {
             data_type: data_type.into(),
             nullable,
             primary_key: name == "id",
+            read_only: true,
+            default_value: None,
         })
         .collect();
     let names = [

@@ -1,4 +1,7 @@
-use sqlx::{Connection, Executor, PgConnection};
+use sqlx::{
+    Connection, Executor, PgConnection,
+    postgres::{PgConnectOptions, PgSslMode},
+};
 use webdb::{
     adapters::postgres::{PostgresAdapter, quote_identifier},
     application::DatabaseAdapter,
@@ -7,10 +10,25 @@ use webdb::{
 
 // Creates and deletes only a randomly named schema in an explicitly supplied test DB.
 #[tokio::test]
-#[ignore = "requires WEBDB_TEST_PG_URL pointing to a disposable PostgreSQL database"]
+#[ignore = "requires WEBDB_TEST_CONNECTION_JSON for a disposable PostgreSQL database"]
 async fn postgres_browsing_is_exact_quoted_and_read_only() {
-    let url = std::env::var("WEBDB_TEST_PG_URL").expect("set WEBDB_TEST_PG_URL");
-    let mut setup = PgConnection::connect(&url).await.unwrap();
+    let input: ConnectionInput = serde_json::from_str(
+        &std::env::var("WEBDB_TEST_CONNECTION_JSON").expect("set disposable test connection JSON"),
+    )
+    .expect("valid connection JSON");
+    assert_eq!(input.provider, "postgres");
+    let options = PgConnectOptions::new()
+        .host(&input.host)
+        .port(input.port)
+        .database(&input.database)
+        .username(&input.username)
+        .password(&input.password)
+        .ssl_mode(if input.ssl {
+            PgSslMode::VerifyFull
+        } else {
+            PgSslMode::Disable
+        });
+    let mut setup = PgConnection::connect_with(&options).await.unwrap();
     let schema = format!("test_{}", uuid::Uuid::new_v4().simple());
     let qualified = format!(
         "{}.{}",
@@ -18,16 +36,6 @@ async fn postgres_browsing_is_exact_quoted_and_read_only() {
         quote_identifier("odd\"table")
     );
     setup.execute(sqlx::AssertSqlSafe(format!("CREATE SCHEMA {}; CREATE TABLE {qualified} (id bigint PRIMARY KEY, amount numeric(20,4), note text); INSERT INTO {qualified} VALUES (9007199254740993, 12345678901234.1234, NULL), (9007199254740994, 2.5000, 'hello');", quote_identifier(&schema)).as_str())).await.unwrap();
-    let input = ConnectionInput {
-        provider: "postgres".into(),
-        host: "127.0.0.1".into(),
-        port: 55432,
-        database: "playground".into(),
-        username: "postgres".into(),
-        password: std::env::var("WEBDB_TEST_PG_PASSWORD").expect("set test password"),
-        ssl: false,
-        all_databases: false,
-    };
     let adapter = PostgresAdapter;
     adapter.test(&input).await.unwrap();
     let tables = adapter.tables(&input).await.unwrap();

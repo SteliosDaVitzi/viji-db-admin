@@ -5,10 +5,13 @@ services:
     command: cargo run --locked
     environment:
       WEBDB_BIND: 0.0.0.0:34617
+      WEBDB_STORE_PATH: /var/lib/webdb/connections.sqlite
+      WEBDB_VAULT_KEY: ${WEBDB_VAULT_KEY:?Set WEBDB_VAULT_KEY in .env to a persistent 64-character hex key}
     volumes:
       - ./backend:/app
       - cargo-registry:/usr/local/cargo/registry
       - cargo-target:/app/target
+      - dev-connections:/var/lib/webdb
   frontend:
     image: node:24-bookworm-slim
     working_dir: /app
@@ -24,26 +27,9 @@ services:
       - frontend-nuxt:/app/.nuxt
     depends_on:
       - backend
-  postgres:
-    image: postgres:18-bookworm
-    profiles: [sample-db]
-    environment:
-      POSTGRES_USER: webdb
-      POSTGRES_DB: playground
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
-    ports:
-      - 127.0.0.1:5432:5432
-    volumes:
-      - postgres-data:/var/lib/postgresql
-      - ./scripts/sample.sql:/docker-entrypoint-initdb.d/sample.sql:ro
-    healthcheck:
-      test: [CMD-SHELL, "pg_isready -U webdb -d playground"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
 volumes:
   cargo-registry:
   cargo-target:
   frontend-modules:
   frontend-nuxt:
-  postgres-data:
+  dev-connections:

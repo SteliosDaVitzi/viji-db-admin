@@ -21,6 +21,15 @@ pub fn invalid(message: &'static str) -> AppError {
 
 #[async_trait]
 pub trait DatabaseAdapter: Send + Sync {
+    async fn mutate(
+        &self,
+        _input: &ConnectionInput,
+        _mutation: &Mutation,
+    ) -> AppResult<MutationResult> {
+        Err(invalid(
+            "Editing is unavailable for this provider. Connect to PostgreSQL.",
+        ))
+    }
     fn provider(&self) -> Provider;
     async fn databases(&self, input: &ConnectionInput) -> AppResult<Vec<String>> {
         Ok(vec![input.database.clone()])

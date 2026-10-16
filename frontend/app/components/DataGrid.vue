@@ -6,8 +6,13 @@ const props = defineProps<{
   descending: boolean
   filter: string
   sortable?: boolean
+  selectedRow?: number | null
 }>()
-const emit = defineEmits<{ inspect: [index: number]; sort: [column: string] }>()
+const emit = defineEmits<{
+  select: [index: number]
+  edit: [index: number, column: string]
+  sort: [column: string]
+}>()
 const selectedCell = ref<{ row: number; column: string | null } | null>(null)
 watch([() => props.data, () => props.filter], () => {
   selectedCell.value = null
@@ -54,8 +59,9 @@ function matches(row: Record<string, unknown>, filter: string) {
         <template v-for="(row, index) in data.rows" :key="index"
           ><tr
             v-if="matches(row, filter)"
-            @dblclick="emit('inspect', index)"
-            @keydown.enter.prevent="emit('inspect', index)"
+            :class="{ 'selected-row': selectedRow === index }"
+            :aria-selected="selectedRow === index"
+            @click="emit('select', index)"
           >
             <td
               class="row-number"
@@ -63,9 +69,10 @@ function matches(row: Record<string, unknown>, filter: string) {
                 'selected-cell': selectedCell?.row === index && selectedCell.column === null,
               }"
               tabindex="0"
-              title="Double-click or press Enter for row details"
+              title="Select row"
               @focus="selectedCell = { row: index, column: null }"
               @click="selectedCell = { row: index, column: null }"
+              @keydown.enter.prevent="emit('select', index)"
             >
               {{ data.page * data.pageSize + index + 1 }}
             </td>
@@ -81,6 +88,8 @@ function matches(row: Record<string, unknown>, filter: string) {
               tabindex="0"
               @focus="selectedCell = { row: index, column: column.name }"
               @click="selectedCell = { row: index, column: column.name }"
+              @dblclick.stop="emit('edit', index, column.name)"
+              @keydown.enter.prevent="emit('edit', index, column.name)"
             >
               <span
                 v-if="typeof row[column.name] === 'boolean'"

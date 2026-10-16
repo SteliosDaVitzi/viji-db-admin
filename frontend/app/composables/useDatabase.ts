@@ -5,6 +5,7 @@ import type {
   TableInfo,
   TablePage,
   SavedConnection,
+  Mutation,
 } from '../../shared/database'
 
 export function useDatabase() {
@@ -31,12 +32,25 @@ export function useDatabase() {
   let requestVersion = 0
   let controller: AbortController | undefined
 
-  function message(cause: unknown) {
-    const failure = cause as { data?: { message?: string }; statusCode?: number }
-    if (failure.statusCode === 401) session.value = null
+  function message(cause: unknown, operation?: 'save') {
+    const failure = cause as { data?: { message?: string }; statusCode?: number; status?: number }
+    const status = failure.statusCode || failure.status
+    if (status === 401) {
+      session.value = null
+      return 'Your connection session expired or the backend restarted. Reconnect to continue.'
+    }
+    if (operation === 'save' && status === 404) {
+      return 'The running backend does not support editing yet. Restart the WebDB backend, then reconnect and try again.'
+    }
+    if (status === 413)
+      return 'This request is too large. Use a database client to edit larger records.'
     return (
       failure.data?.message ||
-      'Could not reach the database service. Check that the backend is running and try again.'
+      (status === 403
+        ? 'The request was rejected. Open WebDB at its original address and try again.'
+        : status && status < 500
+          ? 'The request was rejected. Refresh the table and check the entered value.'
+          : 'Could not reach the database service. Check that the backend is running and try again.')
     )
   }
   async function loadRows() {
@@ -252,6 +266,16 @@ export function useDatabase() {
     page.value = 0
     await loadRows()
   }
+  async function applyMutation(mutation: Mutation) {
+    try {
+      return await $fetch<{ affectedRows: number }>('/api/mutations', {
+        method: 'POST',
+        body: { confirmation: 'APPLY', mutation },
+      })
+    } catch (cause) {
+      throw new Error(message(cause, 'save'))
+    }
+  }
   onMounted(async () => {
     try {
       await loadSavedConnections()
@@ -275,6 +299,7 @@ export function useDatabase() {
   })
   onScopeDispose(() => controller?.abort())
   return {
+    applyMutation,
     providers,
     databases,
     savedConnections,

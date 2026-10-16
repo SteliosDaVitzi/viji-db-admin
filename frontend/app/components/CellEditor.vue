@@ -1,0 +1,172 @@
+<script setup lang="ts">
+import type { ColumnInfo, Mutation, TableInfo } from '../../shared/database'
+const props = defineProps<{
+  column: ColumnInfo
+  row: Record<string, unknown>
+  table: TableInfo | null
+  editable: boolean
+  apply: (mutation: Mutation) => Promise<{ affectedRows: number }>
+}>()
+const emit = defineEmits<{ close: []; saved: [] }>()
+const dialog = useTemplateRef<HTMLDialogElement>('dialog')
+const input = useTemplateRef<HTMLTextAreaElement>('input')
+const modeInput = useTemplateRef<HTMLSelectElement>('modeInput')
+const original = props.row[props.column.name]
+const value = ref(
+  original === null
+    ? ''
+    : typeof original === 'object'
+      ? JSON.stringify(original)
+      : String(original),
+)
+const mode = ref(original === null ? 'null' : 'value')
+const saving = ref(false)
+const error = ref('')
+const contentWidth = ref(340)
+let measurement: CanvasRenderingContext2D | null = null
+function fitHeight() {
+  const field = input.value
+  if (!field) return
+  const scrollTop = field.scrollTop
+  field.style.height = '0px'
+  field.style.height = `${field.scrollHeight + 2}px`
+  field.scrollTop = scrollTop
+}
+async function fitContent() {
+  if (!measurement || !input.value) return
+  measurement.font = getComputedStyle(input.value).font
+  let width = 0
+  for (const line of (mode.value === 'null' ? 'NULL' : value.value).split('\n')) {
+    width = Math.max(width, measurement.measureText(line).width)
+    if (width >= 620) break
+  }
+  contentWidth.value = Math.ceil(Math.min(680, Math.max(340, width + 60)))
+  await nextTick()
+  fitHeight()
+}
+watch([value, mode], fitContent, { flush: 'post' })
+let resizeObserver: ResizeObserver | undefined
+const canEdit = computed(() => props.editable && !props.column.readOnly)
+const changed = computed(() =>
+  mode.value === 'null'
+    ? original !== null
+    : original === null ||
+      value.value !== (typeof original === 'object' ? JSON.stringify(original) : String(original)),
+)
+async function focusValue() {
+  await nextTick()
+  if (mode.value === 'null') modeInput.value?.focus()
+  else {
+    input.value?.focus()
+    input.value?.select()
+  }
+}
+onMounted(async () => {
+  dialog.value?.showModal()
+  measurement = document.createElement('canvas').getContext('2d')
+  await fitContent()
+  let previousWidth = input.value?.clientWidth
+  resizeObserver = new ResizeObserver(() => {
+    const width = input.value?.clientWidth
+    if (width !== previousWidth) {
+      previousWidth = width
+      fitHeight()
+    }
+  })
+  if (input.value) resizeObserver.observe(input.value)
+  await focusValue()
+})
+onScopeDispose(() => resizeObserver?.disconnect())
+async function save() {
+  if (saving.value || !canEdit.value || !changed.value || !props.table) return
+  saving.value = true
+  error.value = ''
+  try {
+    await props.apply({
+      action: 'update',
+      schema: props.table.schema,
+      table: props.table.name,
+      original: props.row,
+      values: { [props.column.name]: mode.value === 'null' ? null : value.value },
+    })
+    emit('saved')
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'Could not save this value. Try again.'
+  } finally {
+    saving.value = false
+  }
+}
+</script>
+<template>
+  <dialog
+    ref="dialog"
+    class="cell-editor"
+    :style="{ '--cell-editor-width': `${contentWidth}px` }"
+    :aria-label="`${canEdit ? 'Edit' : 'View'} ${column.name}`"
+    @close="emit('close')"
+    @cancel="saving && $event.preventDefault()"
+    @click="$event.target === dialog && !saving && emit('close')"
+  >
+    <form
+      @submit.prevent="save"
+      @keydown.ctrl.enter.prevent="save"
+      @keydown.meta.enter.prevent="save"
+    >
+      <div class="cell-editor-heading">
+        <label for="cell-value">{{ column.name }}</label
+        ><span class="muted">{{ column.dataType }}</span
+        ><button
+          type="button"
+          class="icon-button"
+          aria-label="Close value editor"
+          :disabled="saving"
+          @click="emit('close')"
+        >
+          <AppIcon name="close" :size="16" />
+        </button>
+      </div>
+      <div class="cell-editor-controls">
+        <textarea
+          id="cell-value"
+          ref="input"
+          v-model="value"
+          rows="1"
+          :readonly="!canEdit"
+          :disabled="saving || mode === 'null'"
+          :placeholder="mode === 'null' ? 'NULL' : 'Value'"
+          spellcheck="false"
+        />
+        <div class="cell-editor-actions">
+          <select
+            v-if="canEdit && column.nullable"
+            ref="modeInput"
+            v-model="mode"
+            aria-label="Value or NULL"
+            :disabled="saving"
+            @change="focusValue"
+          >
+            <option value="value">Value</option>
+            <option value="null">NULL</option>
+          </select>
+          <button v-if="canEdit" type="submit" class="button small" :disabled="saving || !changed">
+            {{ saving ? 'Saving…' : 'Save value' }}
+          </button>
+          <button
+            type="button"
+            class="button secondary small"
+            :disabled="saving"
+            @click="emit('close')"
+          >
+            {{ canEdit ? 'Cancel' : 'Close' }}
+          </button>
+        </div>
+      </div>
+      <p v-if="!canEdit" class="muted">
+        {{
+          column.readOnly && editable ? 'Generated by the database.' : 'This value is read only.'
+        }}
+      </p>
+      <p v-if="error" class="cell-editor-error" role="alert">{{ error }}</p>
+    </form>
+  </dialog>
+</template>

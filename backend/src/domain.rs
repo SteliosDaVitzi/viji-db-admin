@@ -1,6 +1,53 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+/// Writes are deliberately separate from browsing and read-only SQL.
+#[derive(Deserialize)]
+#[serde(tag = "action", rename_all = "camelCase")]
+pub enum Mutation {
+    Insert {
+        schema: String,
+        table: String,
+        values: std::collections::BTreeMap<String, Option<String>>,
+    },
+    Update {
+        schema: String,
+        table: String,
+        original: Map<String, Value>,
+        values: std::collections::BTreeMap<String, Option<String>>,
+    },
+    Delete {
+        schema: String,
+        table: String,
+        original: Map<String, Value>,
+    },
+    CreateDatabase {
+        name: String,
+    },
+    DropDatabase {
+        name: String,
+    },
+    DropTable {
+        schema: String,
+        table: String,
+    },
+    Execute {
+        sql: String,
+    },
+}
+
+#[derive(Deserialize)]
+pub struct MutationRequest {
+    pub confirmation: String,
+    pub mutation: Mutation,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MutationResult {
+    pub affected_rows: u64,
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionInput {
@@ -83,6 +130,8 @@ pub struct Column {
     pub data_type: String,
     pub nullable: bool,
     pub primary_key: bool,
+    pub read_only: bool,
+    pub default_value: Option<String>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

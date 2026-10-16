@@ -11,4 +11,4 @@ for arg in "$@"; do
     *) echo "Unknown argument: $arg" >&2; exit 1 ;;
   esac
 done
-compose --profile '*' down "${flags[@]}"
+compose down "${flags[@]}"

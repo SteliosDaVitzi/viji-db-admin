@@ -1,6 +1,26 @@
 <script setup lang="ts">
-import type { ConnectionInput } from '../shared/database'
+import type { ColumnInfo, ConnectionInput } from '../shared/database'
 const db = useDatabase()
+const editor = ref<'insert' | 'delete' | 'schema' | null>(null)
+const editingCell = ref<{
+  row: Record<string, unknown>
+  column: ColumnInfo
+} | null>(null)
+const editable = computed(
+  () =>
+    session.value?.provider === 'postgres' &&
+    !activeQuery.value &&
+    selectedTable.value?.kind === 'BASE TABLE',
+)
+const mutationNotice = ref('')
+async function mutationSaved() {
+  editor.value = null
+  selectedRow.value = null
+  queryViews.clear()
+  mutationNotice.value = 'Change applied successfully.'
+  explorerKey.value++
+  await db.refreshExplorer()
+}
 const {
   providers,
   session,
@@ -45,6 +65,9 @@ function captureQueryView() {
 }
 const queryViews = new Map<string, ReturnType<typeof captureQueryView>>()
 watch(session, () => {
+  editingCell.value = null
+  editor.value = null
+  mutationNotice.value = ''
   queryViews.clear()
   currentQueryId = 'query-1'
   queryWorkspaceKey.value++
@@ -119,8 +142,20 @@ function exportPage() {
   link.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
-function inspectRow(index: number) {
+watch(rowFilter, () => {
+  selectedRow.value = null
+})
+function editCell(index: number, name: string) {
   selectedRow.value = index
+  const row = data.value?.rows[index]
+  const column = data.value?.columns.find((column) => column.name === name)
+  if (row && column) editingCell.value = { row, column }
+}
+async function cellSaved() {
+  editingCell.value = null
+  queryViews.clear()
+  mutationNotice.value = 'Value saved.'
+  await db.loadRows()
 }
 </script>
 <template>
@@ -130,10 +165,13 @@ function inspectRow(index: number) {
         ><span class="brand-icon"><AppIcon name="database" :size="20" /></span>web<span
           class="brand-db"
           >db</span
-        ><span class="brand-caption">Database viewer</span></a
+        ><span class="brand-caption">Database workspace</span></a
       >
       <div class="header-actions">
-        <span class="read-only"><AppIcon name="lock" :size="13" />Read only</span
+        <span class="read-only"
+          ><AppIcon name="lock" :size="13" />{{
+            session?.provider === 'postgres' ? 'Browse & edit' : 'Read only'
+          }}</span
         ><button
           v-if="session"
           class="button secondary small"
@@ -211,7 +249,7 @@ function inspectRow(index: number) {
             >
               <AppIcon name="disconnect" :size="15" /></button></template
           ><template v-else
-            ><AppIcon name="lock" :size="13" /><span>A read-only workspace</span></template
+            ><AppIcon name="lock" :size="13" /><span>Your database workspace</span></template
           >
         </div>
       </aside>
@@ -271,7 +309,28 @@ function inspectRow(index: number) {
           <span class="table-subtitle"
             >{{ session.database }} / {{ selectedTable?.schema || 'public' }}</span
           >
+          <div v-if="session.provider === 'postgres'" class="mutation-toolbar">
+            <button
+              v-if="editable"
+              class="button secondary small"
+              :disabled="busy || switching"
+              @click="editor = 'insert'"
+            >
+              Insert record
+            </button>
+            <button
+              class="button secondary small"
+              :disabled="busy || switching"
+              @click="editor = 'schema'"
+            >
+              Database changes
+            </button>
+          </div>
         </div>
+        <p v-if="mutationNotice" class="mutation-notice" role="status">
+          {{ mutationNotice }}
+          <button class="text-button" @click="mutationNotice = ''">Dismiss</button>
+        </p>
         <div class="view-toolbar">
           <div class="tabs" role="tablist" aria-label="Table view">
             <button
@@ -311,6 +370,14 @@ function inspectRow(index: number) {
               <AppIcon name="close" :size="12" /></button
           ></label>
           <div class="table-heading-actions">
+            <button
+              v-if="editable && record && tab === 'data'"
+              class="button secondary small delete-row-button"
+              :disabled="busy || switching"
+              @click="editor = 'delete'"
+            >
+              Delete row
+            </button>
             <button
               class="icon-button"
               title="Refresh rows"
@@ -408,7 +475,9 @@ function inspectRow(index: number) {
                 :descending="descending"
                 :filter="rowFilter"
                 :sortable="!activeQuery"
-                @inspect="inspectRow"
+                :selected-row="selectedRow"
+                @select="selectedRow = $event"
+                @edit="editCell"
                 @sort="db.sortBy"
               />
               <div v-else class="grid-scroll">
@@ -448,13 +517,6 @@ function inspectRow(index: number) {
               </p>
             </div>
           </section>
-          <RowInspector
-            v-if="record && tab === 'data'"
-            :row="record"
-            :columns="data?.columns || []"
-            :row-number="selectedRow === null ? null : page * pageSize + selectedRow + 1"
-            @close="selectedRow = null"
-          />
         </div>
       </main>
     </div>
@@ -465,10 +527,32 @@ function inspectRow(index: number) {
         }}</span
       ><span v-if="session?.provider === 'demo'">Sample data · No database connection</span
       ><span v-else
-        >Read-only access<span class="statusbar-divider">/</span>Credentials handled by
+        >Explicit write confirmation<span class="statusbar-divider">/</span>Credentials handled by
         backend</span
       ><span>webdb <span class="muted">v0.1</span></span>
     </footer>
+    <CellEditor
+      v-if="editingCell"
+      :column="editingCell.column"
+      :row="editingCell.row"
+      :table="selectedTable"
+      :editable="editable"
+      :apply="db.applyMutation"
+      @close="editingCell = null"
+      @saved="cellSaved"
+    />
+    <MutationDialog
+      v-if="editor && session"
+      :mode="editor"
+      :table="selectedTable"
+      :columns="data?.columns || []"
+      :row="record"
+      :database="session.database"
+      :instance="session.allDatabases"
+      :apply="db.applyMutation"
+      @close="editor = null"
+      @saved="mutationSaved"
+    />
     <dialog ref="connectionDialog" class="connection-dialog" aria-label="Connect to a database">
       <button
         class="icon-button dialog-close"
