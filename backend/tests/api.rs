@@ -54,6 +54,7 @@ async fn session_browsing_validation_and_disconnect() {
             .contains("HttpOnly; SameSite=Strict")
     );
     for (path, status) in [
+        ("/api/database-settings", StatusCode::BAD_REQUEST),
         ("/api/tables", StatusCode::OK),
         (
             "/api/tables?database=outside-session",

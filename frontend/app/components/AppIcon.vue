@@ -1,39 +1,60 @@
 <script setup lang="ts">
-defineProps<{ name: string; size?: number }>()
-const paths: Record<string, string> = {
-  database:
-    'M20 6c0 2.2-3.6 4-8 4S4 8.2 4 6s3.6-4 8-4 8 1.8 8 4ZM4 6v12c0 2.2 3.6 4 8 4s8-1.8 8-4V6M4 12c0 2.2 3.6 4 8 4s8-1.8 8-4',
-  table: 'M3 4h18v16H3zM3 9h18M8 9v11M15 9v11',
-  search: 'm21 21-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0',
-  plus: 'M12 5v14M5 12h14',
-  close: 'm6 6 12 12M6 18 18 6',
-  chevron: 'm9 5 7 7-7 7',
-  down: 'm6 9 6 6 6-6',
-  refresh: 'M20 7v5h-5M4 17v-5h5M5.3 7a8 8 0 0 1 13.2-2L20 7M4 17l1.5 2a8 8 0 0 0 13.2-2',
-  panel: 'M3 4h18v16H3zM15 4v16',
-  key: 'M14 8a5 5 0 1 1-4 5L3 20H1v-3l8-8M17 7h.01',
-  lock: 'M5 10h14v11H5zM8 10V6a4 4 0 0 1 8 0v4M12 14v3',
-  arrow: 'M5 12h14m-5-5 5 5-5 5',
-  download: 'M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4',
-  disconnect: 'M12 2v10M6 5a9 9 0 1 0 12 0',
-  check: 'm5 12 4 4L19 6',
-  grid: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
-  sort: 'M8 4v16m-4-4 4 4 4-4M16 20V4m-4 4 4-4 4 4',
-  play: 'm7 4 13 8-13 8V4Z',
+import settings from '@material-symbols/svg-400/outlined/settings.svg?raw'
+import database from '@material-symbols/svg-400/outlined/database.svg?raw'
+import table from '@material-symbols/svg-400/outlined/table_chart.svg?raw'
+import search from '@material-symbols/svg-400/outlined/search.svg?raw'
+import plus from '@material-symbols/svg-400/outlined/add.svg?raw'
+import close from '@material-symbols/svg-400/outlined/close.svg?raw'
+import chevron from '@material-symbols/svg-400/outlined/chevron_right.svg?raw'
+import down from '@material-symbols/svg-400/outlined/keyboard_arrow_down.svg?raw'
+import refresh from '@material-symbols/svg-400/outlined/refresh.svg?raw'
+import panel from '@material-symbols/svg-400/outlined/side_navigation.svg?raw'
+import key from '@material-symbols/svg-400/outlined/key.svg?raw'
+import lock from '@material-symbols/svg-400/outlined/lock.svg?raw'
+import arrow from '@material-symbols/svg-400/outlined/arrow_forward.svg?raw'
+import download from '@material-symbols/svg-400/outlined/download.svg?raw'
+import disconnect from '@material-symbols/svg-400/outlined/power_settings_new.svg?raw'
+import check from '@material-symbols/svg-400/outlined/check.svg?raw'
+import grid from '@material-symbols/svg-400/outlined/grid_view.svg?raw'
+import sort from '@material-symbols/svg-400/outlined/sort.svg?raw'
+import play from '@material-symbols/svg-400/outlined/play_arrow.svg?raw'
+
+const props = defineProps<{ name: string; size?: number }>()
+// Unmodified Google Material Symbols from the pinned package; no remote requests.
+const icons: Record<string, string> = {
+  settings,
+  database,
+  table,
+  search,
+  plus,
+  close,
+  chevron,
+  down,
+  refresh,
+  panel,
+  key,
+  lock,
+  arrow,
+  download,
+  disconnect,
+  check,
+  grid,
+  sort,
+  play,
 }
+const paths = computed(() =>
+  [...(icons[props.name] || database).matchAll(/<path d="([^"]+)"/g)].map((match) => match[1]),
+)
 </script>
 <template>
   <svg
     :width="size || 18"
     :height="size || 18"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="1.55"
-    stroke-linecap="round"
-    stroke-linejoin="round"
+    viewBox="0 -960 960 960"
+    fill="currentColor"
     aria-hidden="true"
+    focusable="false"
   >
-    <path :d="paths[name] || paths.database" />
+    <path v-for="(path, index) in paths" :key="index" :d="path" />
   </svg>
 </template>

@@ -8,6 +8,48 @@ use std::{str::FromStr, time::Duration};
 
 pub struct PostgresAdapter;
 
+fn redact_setting(mut setting: serde_json::Value) -> serde_json::Value {
+    let name = setting["name"].as_str().unwrap_or_default().to_lowercase();
+    // Connection strings and shell commands can embed credentials, even when
+    // PostgreSQL grants this user permission to inspect their values.
+    if [
+        "password",
+        "secret",
+        "token",
+        "passphrase",
+        "conninfo",
+        "command",
+    ]
+    .iter()
+    .any(|part| name.contains(part))
+    {
+        for field in ["setting", "boot_val", "reset_val"] {
+            setting[field] = "[redacted]".into();
+        }
+    }
+    setting
+}
+
+#[cfg(test)]
+mod settings_tests {
+    #[test]
+    fn credentials_are_redacted_in_every_value() {
+        for name in [
+            "primary_conninfo",
+            "ssl_passphrase_command",
+            "extension.api_token",
+        ] {
+            let result = super::redact_setting(serde_json::json!({
+                "name": name, "setting": "private", "boot_val": "private", "reset_val": "private"
+            }));
+            assert!(!result.to_string().contains("private"));
+            assert_eq!(result["name"], name);
+        }
+        let ordinary = serde_json::json!({"name": "work_mem", "setting": "4096"});
+        assert_eq!(super::redact_setting(ordinary.clone()), ordinary);
+    }
+}
+
 impl From<sqlx::Error> for AppError {
     fn from(error: sqlx::Error) -> Self {
         // The infrastructure boundary replaces driver errors with safe messages.
@@ -93,6 +135,33 @@ async fn begin(connection: &mut PgConnection) -> AppResult<sqlx::Transaction<'_,
 
 #[async_trait]
 impl DatabaseAdapter for PostgresAdapter {
+    async fn settings(&self, input: &ConnectionInput) -> AppResult<DatabaseSettings> {
+        let mut connection = connect(input).await?;
+        let mut tx = connection.begin().await?;
+        sqlx::query("SET TRANSACTION READ ONLY")
+            .execute(&mut *tx)
+            .await?;
+        // Read the effective configuration before applying our own timeout overrides.
+        let settings: Vec<serde_json::Value> = tokio::time::timeout(Duration::from_secs(10), sqlx::query_scalar(
+            "SELECT to_jsonb(s) - 'sourcefile' - 'sourceline' FROM pg_settings s ORDER BY category, name"
+        ).fetch_all(&mut *tx)).await.map_err(|_| AppError(ErrorKind::Timeout, "Reading database settings timed out. Try again."))??;
+        sqlx::query("SET LOCAL statement_timeout = '10s'")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("SET LOCAL lock_timeout = '2s'")
+            .execute(&mut *tx)
+            .await?;
+        let properties: serde_json::Value = sqlx::query_scalar(
+            "SELECT to_jsonb(d) || jsonb_build_object('owner', pg_get_userbyid(datdba), 'encoding', pg_encoding_to_char(encoding), 'tablespace', (SELECT spcname FROM pg_tablespace WHERE oid = d.dattablespace)) FROM pg_database d WHERE datname = current_database()"
+        ).fetch_one(&mut *tx).await?;
+        tx.rollback().await?;
+        Ok(DatabaseSettings {
+            provider: input.provider.clone(),
+            database: input.database.clone(),
+            properties: properties.as_object().cloned().unwrap_or_default(),
+            settings: settings.into_iter().map(redact_setting).collect(),
+        })
+    }
     async fn mutate(
         &self,
         input: &ConnectionInput,

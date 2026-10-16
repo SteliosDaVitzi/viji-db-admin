@@ -58,3 +58,15 @@ export type Mutation =
   | { action: 'createDatabase' | 'dropDatabase'; name: string }
   | { action: 'dropTable'; schema: string; table: string }
   | { action: 'execute'; sql: string }
+
+export interface DatabaseSettings {
+  provider: string
+  database: string
+  properties: Record<string, unknown>
+  settings: Record<string, unknown>[]
+}
+export interface ContextAction {
+  label: string
+  disabled?: boolean
+  run: () => void | Promise<void>
+}

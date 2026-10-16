@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ColumnInfo, ConnectionInput } from '../shared/database'
+import type { ColumnInfo, ConnectionInput, ContextAction, TableInfo } from '../shared/database'
 const db = useDatabase()
 const editor = ref<'insert' | 'delete' | 'schema' | null>(null)
 const editingCell = ref<{
@@ -13,6 +13,99 @@ const editable = computed(
     selectedTable.value?.kind === 'BASE TABLE',
 )
 const mutationNotice = ref('')
+const settingsOpen = ref(false)
+const context = shallowRef<{
+  x: number
+  y: number
+  label: string
+  actions: ContextAction[]
+} | null>(null)
+function showContext(event: MouseEvent, label: string, actions: ContextAction[]) {
+  context.value = { x: event.clientX, y: event.clientY, label, actions }
+}
+async function copy(value: unknown) {
+  try {
+    await navigator.clipboard.writeText(
+      typeof value === 'string' ? value : JSON.stringify(value, null, 2),
+    )
+    mutationNotice.value = 'Copied to clipboard.'
+  } catch {
+    mutationNotice.value = 'Clipboard access failed. Check your browser permissions.'
+  }
+}
+function workspaceContext(event: MouseEvent) {
+  showContext(event, 'Workspace', [
+    {
+      label: 'Refresh explorer',
+      disabled: !session.value || busy.value || switching.value,
+      run: db.refreshExplorer,
+    },
+    {
+      label: 'Database settings',
+      disabled: !session.value || switching.value,
+      run: () => {
+        settingsOpen.value = true
+      },
+    },
+  ])
+}
+function tableContext(event: MouseEvent, table: TableInfo) {
+  const disabled = busy.value || switching.value
+  showContext(event, table.name, [
+    { label: 'Browse table', disabled, run: () => db.chooseTable(table) },
+    {
+      label: 'View structure',
+      disabled,
+      run: async () => {
+        await db.chooseTable(table)
+        tab.value = 'structure'
+      },
+    },
+    {
+      label: 'Copy table name',
+      run: () =>
+        copy(`"${table.schema.replaceAll('"', '""')}"."${table.name.replaceAll('"', '""')}"`),
+    },
+    { label: 'Refresh explorer', disabled, run: db.refreshExplorer },
+  ])
+}
+function schemaContext(event: MouseEvent, schema: string) {
+  showContext(event, schema, [
+    { label: 'Copy schema name', run: () => copy(schema) },
+    { label: 'Refresh explorer', disabled: switching.value || busy.value, run: db.refreshExplorer },
+  ])
+}
+function rowContext(event: MouseEvent, index: number, column?: string) {
+  const row = data.value?.rows[index]
+  if (!row) return
+  selectedRow.value = index
+  const actions: ContextAction[] = [
+    { label: 'Copy row as JSON', run: () => copy(row) },
+    { label: 'Export current page', run: exportPage },
+  ]
+  if (column)
+    actions.unshift(
+      { label: 'Inspect cell', run: () => editCell(index, column) },
+      { label: 'Copy cell value', run: () => copy(row[column]) },
+    )
+  if (editable.value)
+    actions.push(
+      {
+        label: 'Insert record',
+        run: () => {
+          editor.value = 'insert'
+        },
+      },
+      {
+        label: 'Delete row…',
+        run: () => {
+          editor.value = 'delete'
+        },
+      },
+    )
+  const number = page.value * pageSize.value + index + 1
+  showContext(event, column ? `${column} · Row ${number}` : `Row ${number}`, actions)
+}
 async function mutationSaved() {
   editor.value = null
   selectedRow.value = null
@@ -65,6 +158,8 @@ function captureQueryView() {
 }
 const queryViews = new Map<string, ReturnType<typeof captureQueryView>>()
 watch(session, () => {
+  settingsOpen.value = false
+  context.value = null
   editingCell.value = null
   editor.value = null
   mutationNotice.value = ''
@@ -111,6 +206,9 @@ async function runQuery(sql: string) {
 const record = computed(() =>
   selectedRow.value === null ? null : data.value?.rows[selectedRow.value] || null,
 )
+watch([data, busy, switching], () => {
+  context.value = null
+})
 watch(selectedTable, () => {
   rowFilter.value = ''
   tab.value = 'data'
@@ -159,7 +257,7 @@ async function cellSaved() {
 }
 </script>
 <template>
-  <div class="workspace">
+  <div class="workspace" @contextmenu.prevent="workspaceContext">
     <header class="app-header">
       <a href="/" class="brand" aria-label="WebDB home"
         ><span class="brand-icon"><AppIcon name="database" :size="20" /></span>web<span
@@ -211,13 +309,24 @@ async function cellSaved() {
               :title="session ? 'Connected' : 'Disconnected'"
             />
           </div>
-          <DatabaseSelect
-            v-if="session"
-            :databases="session.allDatabases ? databases : [session.database]"
-            :model-value="session.database"
-            :disabled="connecting || switching || tablesLoading"
-            @update:model-value="db.switchDatabase($event)"
-          />
+          <div v-if="session" class="database-select-row">
+            <DatabaseSelect
+              v-if="session"
+              :databases="session.allDatabases ? databases : [session.database]"
+              :model-value="session.database"
+              :disabled="connecting || switching || tablesLoading"
+              @update:model-value="db.switchDatabase($event)"
+            />
+            <button
+              class="icon-button database-settings-button"
+              title="Database settings"
+              aria-label="Database settings"
+              :disabled="connecting || switching"
+              @click="settingsOpen = true"
+            >
+              <AppIcon name="settings" :size="16" />
+            </button>
+          </div>
         </div>
         <DatabaseExplorer
           v-if="session"
@@ -229,6 +338,8 @@ async function cellSaved() {
           :disabled="connecting || switching"
           @choose="db.chooseDatabaseTable"
           @refresh="db.refreshExplorer"
+          @context="tableContext"
+          @schema-context="schemaContext"
         />
         <div v-else class="sidebar-placeholder">
           <AppIcon name="table" :size="22" />
@@ -479,6 +590,7 @@ async function cellSaved() {
                 @select="selectedRow = $event"
                 @edit="editCell"
                 @sort="db.sortBy"
+                @context="rowContext"
               />
               <div v-else class="grid-scroll">
                 <table class="structure-grid">
@@ -531,6 +643,18 @@ async function cellSaved() {
         backend</span
       ><span>webdb <span class="muted">v0.1</span></span>
     </footer>
+    <ContextMenu
+      v-if="context"
+      :key="`${context.x}-${context.y}-${context.label}`"
+      v-bind="context"
+      @close="context = null"
+    />
+    <DatabaseSettings
+      v-if="settingsOpen && session"
+      :database="session.database"
+      :provider="session.provider"
+      @close="settingsOpen = false"
+    />
     <CellEditor
       v-if="editingCell"
       :column="editingCell.column"

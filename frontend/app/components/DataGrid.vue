@@ -12,6 +12,7 @@ const emit = defineEmits<{
   select: [index: number]
   edit: [index: number, column: string]
   sort: [column: string]
+  context: [event: MouseEvent, index: number, column?: string]
 }>()
 const selectedCell = ref<{ row: number; column: string | null } | null>(null)
 watch([() => props.data, () => props.filter], () => {
@@ -62,6 +63,7 @@ function matches(row: Record<string, unknown>, filter: string) {
             :class="{ 'selected-row': selectedRow === index }"
             :aria-selected="selectedRow === index"
             @click="emit('select', index)"
+            @contextmenu.prevent.stop="emit('context', $event, index)"
           >
             <td
               class="row-number"
@@ -88,6 +90,7 @@ function matches(row: Record<string, unknown>, filter: string) {
               tabindex="0"
               @focus="selectedCell = { row: index, column: column.name }"
               @click="selectedCell = { row: index, column: column.name }"
+              @contextmenu.prevent.stop="emit('context', $event, index, column.name)"
               @dblclick.stop="emit('edit', index, column.name)"
               @keydown.enter.prevent="emit('edit', index, column.name)"
             >

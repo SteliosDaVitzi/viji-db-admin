@@ -38,6 +38,17 @@ async fn postgres_browsing_is_exact_quoted_and_read_only() {
     setup.execute(sqlx::AssertSqlSafe(format!("CREATE SCHEMA {}; CREATE TABLE {qualified} (id bigint PRIMARY KEY, amount numeric(20,4), note text); INSERT INTO {qualified} VALUES (9007199254740993, 12345678901234.1234, NULL), (9007199254740994, 2.5000, 'hello');", quote_identifier(&schema)).as_str())).await.unwrap();
     let adapter = PostgresAdapter;
     adapter.test(&input).await.unwrap();
+    let settings = adapter.settings(&input).await.unwrap();
+    assert_eq!(settings.database, input.database);
+    assert_eq!(settings.provider, "postgres");
+    assert_eq!(settings.properties["datname"], input.database);
+    assert!(settings.settings.iter().any(|s| s["name"] == "work_mem"));
+    assert!(
+        settings
+            .settings
+            .iter()
+            .all(|s| s.get("sourcefile").is_none())
+    );
     let tables = adapter.tables(&input).await.unwrap();
     assert!(
         tables

@@ -93,6 +93,7 @@ fn router_with_services(
             get(|| async { Json(serde_json::json!({"status":"ok"})) }),
         )
         .route("/api/providers", get(providers))
+        .route("/api/database-settings", get(database_settings))
         .route(
             "/api/session",
             post(connect).get(current_session).delete(disconnect),
@@ -128,6 +129,24 @@ async fn security_headers(request: axum::extract::Request, next: Next) -> Respon
 }
 async fn providers(State(state): State<Shared>) -> Json<Vec<Provider>> {
     Json(state.database.providers())
+}
+
+async fn database_settings(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+) -> AppResult<Json<DatabaseSettings>> {
+    let _permit = state
+        .operations
+        .try_acquire()
+        .map_err(|_| AppError(ErrorKind::Busy, "Too many requests. Try again shortly."))?;
+    let input = state.sessions.get(session_token(&headers))?;
+    Ok(Json(
+        state
+            .database
+            .resolve(&input.provider)?
+            .settings(&input)
+            .await?,
+    ))
 }
 
 fn session_info(input: &ConnectionInput) -> serde_json::Value {
@@ -384,6 +403,14 @@ mod tests {
     struct InstanceAdapter;
     #[async_trait::async_trait]
     impl DatabaseAdapter for InstanceAdapter {
+        async fn settings(&self, input: &ConnectionInput) -> AppResult<DatabaseSettings> {
+            Ok(DatabaseSettings {
+                provider: input.provider.clone(),
+                database: input.database.clone(),
+                properties: serde_json::Map::new(),
+                settings: vec![],
+            })
+        }
         fn provider(&self) -> Provider {
             Provider {
                 id: "postgres",
@@ -564,6 +591,30 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(switched["database"], "app\"db");
+        let (status, _, settings) = call(
+            &app,
+            "GET",
+            "/api/database-settings",
+            &next,
+            serde_json::Value::Null,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(settings["database"], "app\"db");
+        assert_eq!(settings["provider"], "postgres");
+        assert!(!settings.to_string().contains("private-password"));
+        assert_eq!(
+            call(
+                &app,
+                "GET",
+                "/api/database-settings",
+                "",
+                serde_json::Value::Null
+            )
+            .await
+            .0,
+            StatusCode::UNAUTHORIZED
+        );
         assert_eq!(
             call(&app, "GET", "/api/tables", &token, serde_json::Value::Null)
                 .await

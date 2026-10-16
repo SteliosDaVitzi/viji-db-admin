@@ -11,6 +11,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   choose: [database: string, table: TableInfo]
   refresh: []
+  context: [event: MouseEvent, table: TableInfo]
+  schemaContext: [event: MouseEvent, schema: string]
 }>()
 const filter = ref('')
 const expanded = ref(new Set(['public']))
@@ -69,6 +71,7 @@ watch(
           :aria-controls="`${treeId}-${index}`"
           :disabled="disabled || !!filter.trim()"
           @click="toggle(schema)"
+          @contextmenu.prevent.stop="emit('schemaContext', $event, schema)"
         >
           <AppIcon :name="isExpanded(schema) ? 'down' : 'chevron'" :size="12" />
           <span class="schema-name">{{ schema }}</span>
@@ -90,6 +93,7 @@ watch(
             "
             :title="`${activeDatabase}.${table.schema}.${table.name}`"
             @click="emit('choose', activeDatabase, table)"
+            @contextmenu.prevent.stop="emit('context', $event, table)"
           >
             <AppIcon name="table" :size="15" /><span>{{ table.name }}</span>
           </button>

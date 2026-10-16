@@ -21,6 +21,11 @@ pub fn invalid(message: &'static str) -> AppError {
 
 #[async_trait]
 pub trait DatabaseAdapter: Send + Sync {
+    async fn settings(&self, _input: &ConnectionInput) -> AppResult<DatabaseSettings> {
+        Err(invalid(
+            "Database settings are unavailable for this provider.",
+        ))
+    }
     async fn mutate(
         &self,
         _input: &ConnectionInput,

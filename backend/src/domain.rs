@@ -1,6 +1,15 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DatabaseSettings {
+    pub provider: String,
+    pub database: String,
+    pub properties: Map<String, Value>,
+    pub settings: Vec<Value>,
+}
+
 /// Writes are deliberately separate from browsing and read-only SQL.
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "camelCase")]
