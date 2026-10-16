@@ -80,6 +80,30 @@ pub struct BrowseQuery {
     pub sort: Option<String>,
     pub descending: Option<bool>,
 }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SqlQuery {
+    pub sql: String,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+impl SqlQuery {
+    pub fn bounds(&self) -> Result<(u32, u32), &'static str> {
+        let page = self.page.unwrap_or(0);
+        let size = self.page_size.unwrap_or(50);
+        if self.sql.trim().is_empty() || self.sql.len() > 12_000 {
+            return Err("Enter a query of at most 12,000 bytes.");
+        }
+        if page > 100_000 || !(1..=100).contains(&size) {
+            return Err("Invalid query pagination parameters.");
+        }
+        Ok((page, size))
+    }
+    pub fn statement(&self) -> &str {
+        self.sql.trim().trim_end_matches(';').trim_end()
+    }
+}
 impl BrowseQuery {
     pub fn bounds(&self) -> Result<(u32, u32), &'static str> {
         let page = self.page.unwrap_or(0);

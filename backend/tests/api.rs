@@ -72,6 +72,109 @@ async fn session_browsing_validation_and_disconnect() {
             assert_eq!(json["hasMore"], true);
         }
     }
+    for (sql, page, page_size, status, expected_rows, has_more) in [
+        (
+            "SELECT * FROM \"public\".\"customers\";",
+            0,
+            5,
+            StatusCode::OK,
+            5,
+            true,
+        ),
+        (
+            "select * from public.orders LIMIT 7",
+            1,
+            5,
+            StatusCode::OK,
+            2,
+            false,
+        ),
+        (
+            "SELECT * FROM products LIMIT 0",
+            0,
+            5,
+            StatusCode::OK,
+            0,
+            false,
+        ),
+        (
+            "SELECT * FROM products LIMIT 7",
+            2,
+            5,
+            StatusCode::OK,
+            0,
+            false,
+        ),
+        ("", 0, 5, StatusCode::BAD_REQUEST, 0, false),
+        (
+            "SELECT * FROM customers",
+            0,
+            101,
+            StatusCode::BAD_REQUEST,
+            0,
+            false,
+        ),
+        (
+            "DELETE FROM customers",
+            0,
+            5,
+            StatusCode::BAD_REQUEST,
+            0,
+            false,
+        ),
+        (
+            "SELECT * FROM customers; DELETE FROM customers",
+            0,
+            5,
+            StatusCode::BAD_REQUEST,
+            0,
+            false,
+        ),
+        (
+            "SELECT name FROM customers",
+            0,
+            5,
+            StatusCode::BAD_REQUEST,
+            0,
+            false,
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::post("/api/query")
+                    .header("cookie", &cookie)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"sql": sql, "page": page, "pageSize": page_size})
+                            .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), status, "{sql}");
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        if status == StatusCode::OK {
+            assert_eq!(json["rows"].as_array().unwrap().len(), expected_rows);
+            assert_eq!(json["hasMore"], has_more);
+            assert_eq!(json["page"], page);
+        } else {
+            assert!(json["message"].is_string());
+        }
+    }
+    let unauthorized_query = app
+        .clone()
+        .oneshot(
+            Request::post("/api/query")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"sql":"SELECT * FROM customers"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unauthorized_query.status(), StatusCode::UNAUTHORIZED);
     let response = app
         .clone()
         .oneshot(

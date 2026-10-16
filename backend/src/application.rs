@@ -25,6 +25,7 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn test(&self, input: &ConnectionInput) -> AppResult<()>;
     async fn tables(&self, input: &ConnectionInput) -> AppResult<Vec<Table>>;
     async fn rows(&self, input: &ConnectionInput, query: &BrowseQuery) -> AppResult<TablePage>;
+    async fn query(&self, input: &ConnectionInput, query: &SqlQuery) -> AppResult<TablePage>;
 }
 
 pub struct DatabaseService {

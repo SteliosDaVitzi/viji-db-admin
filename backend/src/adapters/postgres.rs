@@ -1,7 +1,7 @@
 use crate::{application::*, domain::*};
 use async_trait::async_trait;
 use sqlx::{
-    Connection, PgConnection, Row,
+    Column as SqlxColumn, Connection, Executor, PgConnection, Row, SqlSafeStr, Statement, TypeInfo,
     postgres::{PgConnectOptions, PgSslMode},
 };
 use std::{str::FromStr, time::Duration};
@@ -31,6 +31,19 @@ impl From<sqlx::Error> for AppError {
 
 pub fn quote_identifier(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
+}
+
+fn query_error(error: sqlx::Error) -> AppError {
+    match &error {
+        sqlx::Error::Database(e) => match e.code().as_deref() {
+            Some("42601" | "42P01" | "42703" | "42702" | "42P18" | "42P02") => invalid(
+                "Check the SQL syntax, table names, and column aliases. Run one SELECT query at a time.",
+            ),
+            Some("25006" | "0A000") => invalid("Only read-only SELECT queries are supported."),
+            _ => error.into(),
+        },
+        _ => error.into(),
+    }
 }
 
 async fn connect(input: &ConnectionInput) -> AppResult<PgConnection> {
@@ -88,6 +101,76 @@ impl DatabaseAdapter for PostgresAdapter {
         sqlx::query("SELECT 1").execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
+    }
+    async fn query(&self, input: &ConnectionInput, query: &SqlQuery) -> AppResult<TablePage> {
+        let (page, page_size) = query.bounds().map_err(invalid)?;
+        let mut connection = connect(input).await?;
+        let mut tx = begin(&mut connection).await?;
+        // Preparing a derived-table SELECT uses PostgreSQL's parser and single-statement
+        // extended protocol. Commands cannot run here; execution remains READ ONLY.
+        let source = format!("SELECT * FROM (\n{}\n) AS webdb_query", query.statement());
+        let statement = (&mut *tx)
+            .prepare(sqlx::AssertSqlSafe(source.as_str()).into_sql_str())
+            .await
+            .map_err(query_error)?;
+        let mut names = std::collections::HashSet::new();
+        let mut columns = Vec::new();
+        let mut projection = Vec::new();
+        for column in statement.columns() {
+            if !names.insert(column.name().to_owned()) {
+                return Err(invalid("Use unique column aliases for query results."));
+            }
+            let name = quote_identifier(column.name());
+            let data_type = column.type_info().name();
+            projection.push(
+                if matches!(data_type, "INT8" | "NUMERIC" | "JSON" | "JSONB")
+                    || data_type.ends_with("[]")
+                {
+                    format!("webdb_query.{name}::text AS {name}")
+                } else {
+                    format!("webdb_query.{name}")
+                },
+            );
+            columns.push(Column {
+                name: column.name().to_owned(),
+                data_type: data_type.to_lowercase(),
+                nullable: true,
+                primary_key: false,
+            });
+        }
+        if columns.is_empty() {
+            return Err(invalid("Run a SELECT query that returns columns."));
+        }
+        let sql = format!(
+            "SELECT to_jsonb(record) AS value FROM (SELECT {} FROM (\n{}\n) AS webdb_query LIMIT $1 OFFSET $2) AS record",
+            projection.join(", "),
+            query.statement()
+        );
+        // SQL is intentionally user-authored. Generated identifiers are quoted and
+        // pagination values are bound; the read-only transaction is the write barrier.
+        let records = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(i64::from(page_size) + 1)
+            .bind(i64::from(page) * i64::from(page_size))
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(query_error)?;
+        let has_more = records.len() > page_size as usize;
+        let rows = records
+            .into_iter()
+            .take(page_size as usize)
+            .map(|r| {
+                let value: serde_json::Value = r.get("value");
+                value.as_object().cloned().unwrap_or_default()
+            })
+            .collect();
+        tx.rollback().await?;
+        Ok(TablePage {
+            columns,
+            rows,
+            has_more,
+            page,
+            page_size,
+        })
     }
     async fn tables(&self, input: &ConnectionInput) -> AppResult<Vec<Table>> {
         let mut connection = connect(input).await?;

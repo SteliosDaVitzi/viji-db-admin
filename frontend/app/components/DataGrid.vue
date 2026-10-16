@@ -5,6 +5,7 @@ const props = defineProps<{
   sort?: string
   descending: boolean
   filter: string
+  sortable?: boolean
 }>()
 const emit = defineEmits<{ inspect: [index: number]; sort: [column: string] }>()
 const selectedCell = ref<{ row: number; column: string | null } | null>(null)
@@ -32,7 +33,11 @@ function matches(row: Record<string, unknown>, filter: string) {
             :key="column.name"
             :aria-sort="sort === column.name ? (descending ? 'descending' : 'ascending') : 'none'"
           >
-            <button :title="`Sort by ${column.name}`" @click="emit('sort', column.name)">
+            <button
+              :title="sortable === false ? column.name : `Sort by ${column.name}`"
+              :disabled="sortable === false"
+              @click="emit('sort', column.name)"
+            >
               <span class="column-label"
                 ><AppIcon v-if="column.primaryKey" name="key" :size="12" />{{ column.name
                 }}<AppIcon

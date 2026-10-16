@@ -73,6 +73,57 @@ impl DatabaseAdapter for DemoAdapter {
     async fn test(&self, _: &ConnectionInput) -> AppResult<()> {
         Ok(())
     }
+    async fn query(&self, input: &ConnectionInput, query: &SqlQuery) -> AppResult<TablePage> {
+        let (page, page_size) = query.bounds().map_err(invalid)?;
+        let words: Vec<_> = query.statement().split_whitespace().collect();
+        let unsupported = || {
+            invalid(
+                "Sample queries support SELECT * FROM public.customers (or orders / products), with an optional LIMIT. Connect PostgreSQL for full SQL.",
+            )
+        };
+        if !matches!(words.len(), 4 | 6)
+            || !words[0].eq_ignore_ascii_case("SELECT")
+            || words[1] != "*"
+            || !words[2].eq_ignore_ascii_case("FROM")
+        {
+            return Err(unsupported());
+        }
+        let table = ["customers", "orders", "products"]
+            .into_iter()
+            .find(|name| {
+                [
+                    name.to_string(),
+                    format!("public.{name}"),
+                    format!("\"public\".\"{name}\""),
+                ]
+                .contains(&words[3].to_string())
+            })
+            .ok_or_else(unsupported)?;
+        let limit = if words.len() == 6 {
+            if !words[4].eq_ignore_ascii_case("LIMIT") {
+                return Err(unsupported());
+            }
+            words[5].parse::<usize>().map_err(|_| unsupported())?
+        } else {
+            usize::MAX
+        };
+        let mut result = self
+            .rows(
+                input,
+                &BrowseQuery {
+                    schema: "public".into(),
+                    table: table.into(),
+                    page: Some(page),
+                    page_size: Some(page_size),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let offset = (page * page_size) as usize;
+        result.rows.truncate(limit.saturating_sub(offset));
+        result.has_more &= limit > offset + page_size as usize;
+        Ok(result)
+    }
     async fn tables(&self, _: &ConnectionInput) -> AppResult<Vec<Table>> {
         Ok(["customers", "orders", "products"]
             .into_iter()

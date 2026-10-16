@@ -16,11 +16,69 @@ const {
   pageSize,
   sort,
   descending,
+  activeQuery,
 } = db
 const tableFilter = ref('')
 const rowFilter = ref('')
 const tab = ref<'data' | 'structure'>('data')
+const queryWorkspaceKey = ref(0)
+let currentQueryId = 'query-1'
+function captureQueryView() {
+  return {
+    data: data.value,
+    activeQuery: activeQuery.value,
+    page: page.value,
+    pageSize: pageSize.value,
+    sort: sort.value,
+    descending: descending.value,
+    table: selectedTable.value,
+    filter: rowFilter.value,
+    tab: tab.value,
+    error: error.value,
+  }
+}
+const queryViews = new Map<string, ReturnType<typeof captureQueryView>>()
+watch(session, () => {
+  queryViews.clear()
+  currentQueryId = 'query-1'
+  queryWorkspaceKey.value++
+})
+async function activateQuery(id: string) {
+  if (busy.value || id === currentQueryId) return
+  queryViews.set(currentQueryId, captureQueryView())
+  currentQueryId = id
+  selectedRow.value = null
+  const view = queryViews.get(id)
+  if (view) {
+    selectedTable.value = view.table
+    data.value = view.data
+    activeQuery.value = view.activeQuery
+    page.value = view.page
+    pageSize.value = view.pageSize
+    sort.value = view.sort
+    descending.value = view.descending
+    error.value = view.error
+    await nextTick()
+    rowFilter.value = view.filter
+    tab.value = view.tab
+  } else {
+    rowFilter.value = ''
+    tab.value = 'data'
+    await db.browseTable()
+  }
+}
 const connectionDialog = useTemplateRef<HTMLDialogElement>('connectionDialog')
+const initialSql = computed(() => {
+  const quote = (name: string) => `"${name.replaceAll('"', '""')}"`
+  return selectedTable.value
+    ? `SELECT * FROM ${quote(selectedTable.value.schema)}.${quote(selectedTable.value.name)};`
+    : 'SELECT 1 AS result;'
+})
+async function runQuery(sql: string) {
+  tab.value = 'data'
+  rowFilter.value = ''
+  await db.runQuery(sql)
+}
 const filteredTables = computed(() =>
   tables.value.filter((t) =>
     `${t.schema}.${t.name}`.toLowerCase().includes(tableFilter.value.toLowerCase()),
@@ -49,12 +107,12 @@ async function demo() {
   })
 }
 function exportPage() {
-  if (!data.value || !selectedTable.value) return
+  if (!data.value) return
   const blob = new Blob([JSON.stringify(data.value.rows, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `${selectedTable.value.name}-page-${page.value + 1}.json`
+  link.download = `${activeQuery.value ? 'query-results' : selectedTable.value?.name || 'table'}-page-${page.value + 1}.json`
   link.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
@@ -197,42 +255,22 @@ function inspectRow(index: number) {
         </div>
       </main>
       <main v-else class="database-main">
-        <div class="main-heading">
-          <div class="breadcrumbs">
-            <AppIcon name="database" :size="15" /><span>{{ session.database }}</span
-            ><span class="slash">/</span><span>{{ selectedTable?.schema || '—' }}</span
-            ><span class="slash">/</span><strong>{{ selectedTable?.name || 'Tables' }}</strong>
-          </div>
-          <span v-if="session.provider === 'demo'" class="sample-badge">Sample workspace</span>
-        </div>
+        <QueryEditor
+          :key="queryWorkspaceKey"
+          :initial-sql="initialSql"
+          :busy="busy"
+          :active-query="activeQuery"
+          :demo="session.provider === 'demo'"
+          @run="runQuery"
+          @activate="activateQuery"
+          @close="queryViews.delete($event)"
+        />
         <div class="table-heading">
-          <div>
-            <h1>{{ selectedTable?.name || 'Your database' }}</h1>
-            <span class="table-subtitle">{{
-              selectedTable
-                ? `${selectedTable.kind === 'VIEW' ? 'View' : 'Table'} in ${selectedTable.schema}`
-                : 'Choose a table to explore its contents.'
-            }}</span>
-          </div>
-          <div class="table-heading-actions">
-            <button
-              class="icon-button"
-              title="Refresh rows"
-              aria-label="Refresh rows"
-              :disabled="busy || !selectedTable"
-              @click="db.loadRows"
-            >
-              <AppIcon name="refresh" :size="17" :class="{ spinning: busy }" /></button
-            ><button
-              class="icon-button"
-              title="Export current page as JSON"
-              aria-label="Export current page as JSON"
-              :disabled="!data"
-              @click="exportPage"
-            >
-              <AppIcon name="download" :size="17" />
-            </button>
-          </div>
+          <AppIcon :name="activeQuery ? 'grid' : 'table'" :size="15" />
+          <h1>{{ activeQuery ? 'Query results' : selectedTable?.name || 'Your database' }}</h1>
+          <span class="table-subtitle"
+            >{{ session.database }} / {{ selectedTable?.schema || 'public' }}</span
+          >
         </div>
         <div class="view-toolbar">
           <div class="tabs" role="tablist" aria-label="Table view">
@@ -244,9 +282,8 @@ function inspectRow(index: number) {
               @click="tab = 'data'"
               @keydown.right="tab = 'structure'"
             >
-              <AppIcon name="table" :size="15" />Data<span v-if="data">{{
-                data.rows.length
-              }}</span></button
+              <AppIcon name="table" :size="15" />{{ activeQuery ? 'Results' : 'Data'
+              }}<span v-if="data">{{ data.rows.length }}</span></button
             ><button
               id="structure-tab"
               role="tab"
@@ -273,10 +310,82 @@ function inspectRow(index: number) {
             >
               <AppIcon name="close" :size="12" /></button
           ></label>
+          <div class="table-heading-actions">
+            <button
+              class="icon-button"
+              title="Refresh rows"
+              aria-label="Refresh rows"
+              :disabled="busy || (!selectedTable && !activeQuery)"
+              @click="db.loadRows"
+            >
+              <AppIcon name="refresh" :size="17" :class="{ spinning: busy }" /></button
+            ><button
+              class="icon-button"
+              title="Export current page as JSON"
+              aria-label="Export current page as JSON"
+              :disabled="!data"
+              @click="exportPage"
+            >
+              <AppIcon name="download" :size="17" />
+            </button>
+          </div>
+          <button
+            v-if="activeQuery"
+            class="text-button back-to-table"
+            :disabled="busy"
+            @click="db.browseTable"
+          >
+            Back to table
+          </button>
+          <div v-if="data" class="pagination toolbar-pagination">
+            <span
+              >{{
+                data.rows.length
+                  ? `${page * pageSize + 1}–${page * pageSize + data.rows.length}`
+                  : '0'
+              }}
+              {{ activeQuery ? 'result rows' : 'rows'
+              }}<span class="pagination-detail"> · {{ data.columns.length }} columns</span></span
+            >
+            <div>
+              <label
+                >Rows per page<select
+                  :value="pageSize"
+                  aria-label="Rows per page"
+                  :disabled="busy"
+                  @change="db.changePageSize(Number(($event.target as HTMLSelectElement).value))"
+                >
+                  <option :value="25">25</option>
+                  <option :value="50">50</option>
+                  <option :value="100">100</option>
+                </select></label
+              ><button
+                class="icon-button previous"
+                title="Previous page"
+                aria-label="Previous page"
+                :disabled="page === 0 || busy"
+                @click="db.changePage(page - 1)"
+              >
+                <AppIcon name="chevron" :size="15" /></button
+              ><span class="page-number">{{ page + 1 }}</span
+              ><button
+                class="icon-button"
+                title="Next page"
+                aria-label="Next page"
+                :disabled="!data.hasMore || busy"
+                @click="db.changePage(page + 1)"
+              >
+                <AppIcon name="chevron" :size="15" />
+              </button>
+            </div>
+          </div>
         </div>
         <div v-if="error" class="error-banner" role="alert">
           {{ error
-          }}<button class="text-button" @click="selectedTable ? db.loadRows() : db.loadTables()">
+          }}<button
+            class="text-button"
+            @click="selectedTable || activeQuery ? db.loadRows() : db.loadTables()"
+          >
             Try again
           </button>
         </div>
@@ -298,6 +407,7 @@ function inspectRow(index: number) {
                 :sort="sort"
                 :descending="descending"
                 :filter="rowFilter"
+                :sortable="!activeQuery"
                 @inspect="inspectRow"
                 @sort="db.sortBy"
               />
@@ -337,49 +447,6 @@ function inspectRow(index: number) {
                 }}
               </p>
             </div>
-            <footer v-if="data" class="pagination">
-              <span
-                >{{
-                  data.rows.length
-                    ? `${page * pageSize + 1}–${page * pageSize + data.rows.length}`
-                    : '0'
-                }}
-                rows<span class="pagination-detail">
-                  · {{ data.columns.length }} columns</span
-                ></span
-              >
-              <div>
-                <label
-                  >Rows per page<select
-                    :value="pageSize"
-                    aria-label="Rows per page"
-                    :disabled="busy"
-                    @change="db.changePageSize(Number(($event.target as HTMLSelectElement).value))"
-                  >
-                    <option :value="25">25</option>
-                    <option :value="50">50</option>
-                    <option :value="100">100</option>
-                  </select></label
-                ><button
-                  class="icon-button previous"
-                  title="Previous page"
-                  aria-label="Previous page"
-                  :disabled="page === 0 || busy"
-                  @click="db.changePage(page - 1)"
-                >
-                  <AppIcon name="chevron" :size="15" /></button
-                ><span class="page-number">{{ page + 1 }}</span
-                ><button
-                  class="icon-button"
-                  title="Next page"
-                  aria-label="Next page"
-                  :disabled="!data.hasMore || busy"
-                  @click="db.changePage(page + 1)"
-                >
-                  <AppIcon name="chevron" :size="15" />
-                </button>
-              </div>
-            </footer>
           </section>
           <RowInspector
             v-if="record && tab === 'data'"

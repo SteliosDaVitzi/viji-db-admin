@@ -4,6 +4,10 @@ A focused, read-only database viewer with a Nuxt 4 / Vue 3 / TypeScript interfac
 
 The interface has a table explorer, sortable and paginated rows, a filter for the current page, column metadata, a record inspector, clipboard copying, and current-page JSON export. Surfaces use contrast and shadows; keyboard focus uses a visible light halo.
 
+The full-width query workspace sits above the table section. Use **+** to open independent query tabs; each tab retains its draft and result page during the current connection. The editor has a scrolling line-number gutter. Click **Run** or press **Ctrl/⌘ + Enter** to run a single read-only SELECT (including CTEs, joins, and aggregates on PostgreSQL). Below it, a compact title and one toolbar hold the table views, filter, refresh, JSON export, and pagination. Results retain cell selection and the double-click record modal; put ordering in your SQL. **Back to table** restores normal browsing. An ending semicolon is optional; output columns must have unique names, so alias duplicate names in joins. Queries have a 12,000-byte limit, a 10-second statement timeout, and up to 100 result rows per page. Page navigation reruns the executed query; use an explicit ORDER BY for predictable paging.
+
+Use **Save** to name a query, **Saved** to open it in its own tab, and **Update** to change its name or SQL. Opening an already open saved query switches to its tab and preserves any draft edits. The saved list lets you remove queries. Saved queries persist only in this browser's local storage (up to 100); loading never executes them. Connection credentials and result rows are not stored with them. Avoid putting secrets in saved SQL. The sample workspace supports `SELECT * FROM public.customers` (also `orders` and `products`) with an optional `LIMIT`; connect PostgreSQL for full SQL support.
+
 ## Run locally
 
 Requires Node.js 24.11+ and Rust 1.95+. Docker is optional.

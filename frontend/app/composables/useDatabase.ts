@@ -21,6 +21,7 @@ export function useDatabase() {
   const pageSize = ref(50)
   const sort = ref<string | undefined>()
   const descending = ref(false)
+  const activeQuery = ref<string | null>(null)
   let requestVersion = 0
   let controller: AbortController | undefined
 
@@ -34,7 +35,7 @@ export function useDatabase() {
   }
   async function loadRows() {
     const table = selectedTable.value
-    if (!table) return
+    if (!table && !activeQuery.value) return
     const version = ++requestVersion
     controller?.abort()
     controller = new AbortController()
@@ -43,17 +44,23 @@ export function useDatabase() {
     selectedRow.value = null
     data.value = null
     try {
-      const result = await $fetch<TablePage>('/api/rows', {
-        query: {
-          schema: table.schema,
-          table: table.name,
-          page: page.value,
-          pageSize: pageSize.value,
-          sort: sort.value,
-          descending: descending.value,
-        },
-        signal: controller.signal,
-      })
+      const result = activeQuery.value
+        ? await $fetch<TablePage>('/api/query', {
+            method: 'POST',
+            body: { sql: activeQuery.value, page: page.value, pageSize: pageSize.value },
+            signal: controller.signal,
+          })
+        : await $fetch<TablePage>('/api/rows', {
+            query: {
+              schema: table!.schema,
+              table: table!.name,
+              page: page.value,
+              pageSize: pageSize.value,
+              sort: sort.value,
+              descending: descending.value,
+            },
+            signal: controller.signal,
+          })
       if (version === requestVersion) data.value = result
     } catch (cause) {
       if (version === requestVersion) error.value = message(cause)
@@ -62,6 +69,7 @@ export function useDatabase() {
     }
   }
   async function chooseTable(table: TableInfo) {
+    activeQuery.value = null
     selectedTable.value = table
     page.value = 0
     sort.value = undefined
@@ -96,6 +104,7 @@ export function useDatabase() {
       controller?.abort()
       data.value = null
       selectedRow.value = null
+      activeQuery.value = null
       error.value = ''
       await loadTables()
       return true
@@ -112,6 +121,7 @@ export function useDatabase() {
       ++requestVersion
       controller?.abort()
       session.value = null
+      activeQuery.value = null
       tables.value = []
       selectedTable.value = null
       data.value = null
@@ -123,6 +133,7 @@ export function useDatabase() {
     }
   }
   async function sortBy(column: string) {
+    if (activeQuery.value) return
     descending.value = sort.value === column ? !descending.value : false
     sort.value = column
     page.value = 0
@@ -134,6 +145,20 @@ export function useDatabase() {
   }
   async function changePageSize(size: number) {
     pageSize.value = size
+    page.value = 0
+    await loadRows()
+  }
+  async function runQuery(sql: string) {
+    if (busy.value || !sql.trim()) return
+    activeQuery.value = sql.trim()
+    sort.value = undefined
+    descending.value = false
+    page.value = 0
+    await loadRows()
+  }
+  async function browseTable() {
+    if (busy.value) return
+    activeQuery.value = null
     page.value = 0
     await loadRows()
   }
@@ -169,6 +194,7 @@ export function useDatabase() {
     pageSize,
     sort,
     descending,
+    activeQuery,
     connect,
     disconnect,
     chooseTable,
@@ -177,5 +203,7 @@ export function useDatabase() {
     sortBy,
     changePage,
     changePageSize,
+    runQuery,
+    browseTable,
   }
 }

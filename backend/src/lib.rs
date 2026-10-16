@@ -80,6 +80,7 @@ pub fn router(secure_cookies: bool) -> Router {
         )
         .route("/api/tables", get(tables))
         .route("/api/rows", get(rows))
+        .route("/api/query", post(query))
         .layer(DefaultBodyLimit::max(16 * 1024))
         .layer(middleware::from_fn(security_headers))
         .with_state(state)
@@ -172,6 +173,26 @@ async fn rows(
             .database
             .resolve(&input.provider)?
             .rows(&input, &query)
+            .await?,
+    ))
+}
+
+async fn query(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    Json(query): Json<SqlQuery>,
+) -> AppResult<Json<TablePage>> {
+    let _permit = state
+        .operations
+        .try_acquire()
+        .map_err(|_| AppError(ErrorKind::Busy, "Too many requests. Try again shortly."))?;
+    let input = state.sessions.get(session_token(&headers))?;
+    query.bounds().map_err(invalid)?;
+    Ok(Json(
+        state
+            .database
+            .resolve(&input.provider)?
+            .query(&input, &query)
             .await?,
     ))
 }

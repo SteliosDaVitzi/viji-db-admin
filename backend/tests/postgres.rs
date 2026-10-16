@@ -2,7 +2,7 @@ use sqlx::{Connection, Executor, PgConnection};
 use webdb::{
     adapters::postgres::{PostgresAdapter, quote_identifier},
     application::DatabaseAdapter,
-    domain::{BrowseQuery, ConnectionInput},
+    domain::{BrowseQuery, ConnectionInput, SqlQuery},
 };
 
 // Creates and deletes only a randomly named schema in an explicitly supplied test DB.
@@ -47,6 +47,46 @@ async fn postgres_browsing_is_exact_quoted_and_read_only() {
     assert!(first.rows[0]["note"].is_null());
     assert!(first.has_more);
     assert!(first.columns[0].primary_key);
+    let result = adapter.query(&input, &SqlQuery {
+        sql: format!("WITH selected AS (SELECT * FROM {qualified}) SELECT * FROM selected ORDER BY id;"),
+        page: Some(0), page_size: Some(1),
+    }).await.unwrap();
+    assert_eq!(result.rows[0]["id"], "9007199254740993");
+    assert_eq!(result.rows[0]["amount"], "12345678901234.1234");
+    assert!(result.has_more);
+    let empty = adapter
+        .query(
+            &input,
+            &SqlQuery {
+                sql: format!("SELECT * FROM {qualified} WHERE false"),
+                page: None,
+                page_size: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(empty.rows.is_empty());
+    assert_eq!(empty.columns.len(), 3);
+    for sql in [
+        format!("DELETE FROM {qualified}"),
+        format!("SELECT * FROM {qualified}; DELETE FROM {qualified}"),
+        format!("WITH removed AS (DELETE FROM {qualified} RETURNING *) SELECT * FROM removed"),
+        "SELECT 1 AS duplicate, 2 AS duplicate".into(),
+    ] {
+        assert!(
+            adapter
+                .query(
+                    &input,
+                    &SqlQuery {
+                        sql,
+                        page: None,
+                        page_size: None
+                    }
+                )
+                .await
+                .is_err()
+        );
+    }
     query.sort = Some("amount".into());
     query.descending = Some(true);
     let numeric_sorted = adapter.rows(&input, &query).await.unwrap();
@@ -68,6 +108,20 @@ async fn postgres_browsing_is_exact_quoted_and_read_only() {
     assert!(
         adapter.rows(&input, &query).await.is_err(),
         "read-only transaction must reject writes through a view"
+    );
+    assert!(
+        adapter
+            .query(
+                &input,
+                &SqlQuery {
+                    sql: format!("SELECT {namespace}.attempt_write() AS value"),
+                    page: None,
+                    page_size: None,
+                }
+            )
+            .await
+            .is_err(),
+        "query execution must reject writes through a function"
     );
     setup
         .execute(sqlx::AssertSqlSafe(

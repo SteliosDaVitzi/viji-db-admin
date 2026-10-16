@@ -19,6 +19,7 @@ const paths: Record<string, string> = {
   check: 'm5 12 4 4L19 6',
   grid: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
   sort: 'M8 4v16m-4-4 4 4 4-4M16 20V4m-4 4 4-4 4 4',
+  play: 'm7 4 13 8-13 8V4Z',
 }
 </script>
 <template>
