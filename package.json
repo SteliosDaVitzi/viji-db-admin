@@ -10,7 +10,7 @@
     "format": "cargo fmt --manifest-path backend/Cargo.toml && node frontend/node_modules/prettier/bin/prettier.cjs --write frontend/app frontend/shared frontend/server frontend/nuxt.config.ts scripts/dev.mjs",
     "test:smoke": "node scripts/smoke.mjs",
     "test:write-smoke": "node scripts/write-smoke.mjs",
-    "test": "cargo test --manifest-path backend/Cargo.toml",
+    "test": "cargo test --manifest-path backend/Cargo.toml && node --test frontend/tests/*.test.mjs",
     "audit": "npm --prefix frontend audit --audit-level=low && cargo audit --file backend/Cargo.lock"
   }
 }

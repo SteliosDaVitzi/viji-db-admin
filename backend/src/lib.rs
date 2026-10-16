@@ -472,6 +472,7 @@ mod tests {
                 schema: "public".into(),
                 name: input.database.clone(),
                 kind: "BASE TABLE".into(),
+                columns: vec![],
             }])
         }
         async fn rows(&self, _: &ConnectionInput, _: &BrowseQuery) -> AppResult<TablePage> {

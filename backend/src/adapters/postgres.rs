@@ -295,7 +295,7 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn tables(&self, input: &ConnectionInput) -> AppResult<Vec<Table>> {
         let mut connection = connect(input).await?;
         let mut tx = begin(&mut connection).await?;
-        let rows = sqlx::query("SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema') ORDER BY table_schema, table_name")
+        let rows = sqlx::query("SELECT t.table_schema, t.table_name, t.table_type, ARRAY(SELECT c.column_name::text FROM information_schema.columns c WHERE c.table_schema=t.table_schema AND c.table_name=t.table_name ORDER BY c.ordinal_position) AS columns FROM information_schema.tables t WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema') ORDER BY t.table_schema, t.table_name")
             .fetch_all(&mut *tx).await?;
         let tables = rows
             .iter()
@@ -303,6 +303,7 @@ impl DatabaseAdapter for PostgresAdapter {
                 schema: r.get("table_schema"),
                 name: r.get("table_name"),
                 kind: r.get("table_type"),
+                columns: r.get("columns"),
             })
             .collect();
         tx.commit().await?;

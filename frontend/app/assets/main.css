@@ -1135,56 +1135,21 @@ kbd {
 .query-run {
   gap: 5px;
 }
-.query-code {
-  position: relative;
-  padding-left: 48px;
-}
-.query-gutter {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 48px;
-  overflow: hidden;
-  user-select: none;
-  pointer-events: none;
-  color: var(--muted);
-  text-align: right;
-  font:
-    12px/20px Consolas,
-    'Cascadia Code',
-    monospace;
-}
-.query-gutter > div {
-  padding: 12px 12px 12px 0;
-}
-.query-gutter span {
-  display: block;
-  height: 20px;
-}
-.sql-editor {
-  display: block;
+.sql-editor-host {
   min-width: 0;
   width: 100%;
-  min-height: 64px;
-  height: 124px;
-  resize: none;
-  margin: 0;
-  padding: 12px 24px 12px 0;
-  border: 0;
-  border-radius: 0;
-  outline: none;
-  background: var(--canvas);
-  color: var(--text);
-  font:
-    12px/20px Consolas,
-    'Cascadia Code',
-    monospace;
-  tab-size: 2;
 }
-.sql-editor:focus,
-.sql-editor:focus-visible {
-  background: var(--canvas);
-  box-shadow: none;
-  outline: none;
+.sql-tooltip-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  pointer-events: none;
+}
+.sql-tooltip-layer .cm-tooltip {
+  pointer-events: auto;
+}
+.query-completion-help {
+  margin-left: auto;
 }
 .query-resize {
   position: relative;

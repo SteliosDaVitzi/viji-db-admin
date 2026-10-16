@@ -133,6 +133,9 @@ impl DatabaseAdapter for DemoAdapter {
                 schema: "public".into(),
                 name: name.into(),
                 kind: "BASE TABLE".into(),
+                columns: dataset(name)
+                    .map(|(columns, _)| columns.into_iter().map(|column| column.name).collect())
+                    .unwrap_or_default(),
             })
             .collect())
     }

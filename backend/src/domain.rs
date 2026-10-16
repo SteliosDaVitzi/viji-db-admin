@@ -180,6 +180,7 @@ pub struct Table {
     pub schema: String,
     pub name: String,
     pub kind: String,
+    pub columns: Vec<String>,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -28,6 +28,7 @@ export interface TableInfo {
   schema: string
   name: string
   kind: string
+  columns: string[]
 }
 export interface ColumnInfo {
   name: string

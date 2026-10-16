@@ -84,6 +84,20 @@ async fn session_browsing_validation_and_disconnect() {
             .await
             .unwrap();
         assert_eq!(response.status(), status, "{path}");
+        if path == "/api/tables" {
+            let body = response.into_body().collect().await.unwrap().to_bytes();
+            let tables: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            let customers = tables
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|table| table["name"] == "customers")
+                .unwrap();
+            let columns = customers["columns"].as_array().unwrap();
+            assert!(columns.iter().any(|column| column == "id"));
+            assert!(columns.iter().any(|column| column == "email"));
+            continue;
+        }
         if path.contains("pageSize=5") {
             let body = response.into_body().collect().await.unwrap().to_bytes();
             let json: serde_json::Value = serde_json::from_slice(&body).unwrap();

@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import type { TableInfo } from '../../shared/database'
 const props = defineProps<{
   initialSql: string
   busy: boolean
   activeQuery: string | null
   demo: boolean
+  tables: TableInfo[]
+  selectedTable: TableInfo | null
 }>()
 const emit = defineEmits<{ run: [sql: string]; activate: [id: string]; close: [id: string] }>()
 interface SavedQuery {
@@ -32,14 +35,12 @@ const sql = computed({
 })
 const saved = ref<SavedQuery[]>([])
 const selected = computed(() => saved.value.find((query) => query.id === activeDraft.value.savedId))
-const lineCount = computed(() => sql.value.split('\n').length)
-const scrollTop = ref(0)
 const naming = ref(false)
 const name = ref('')
 const feedback = ref('')
 const storageError = ref('')
 const library = useTemplateRef<HTMLDetailsElement>('library')
-const editor = useTemplateRef<HTMLTextAreaElement>('editor')
+const editor = useTemplateRef<{ focus: () => void }>('editor')
 const nameInput = useTemplateRef<HTMLInputElement>('nameInput')
 const workspace = useTemplateRef<HTMLElement>('workspace')
 const editorHeight = ref(124)
@@ -55,9 +56,8 @@ function setEditorHeight(height: number) {
 }
 function updateResizeBounds() {
   const section = workspace.value
-  const textarea = editor.value
-  if (!section?.parentElement || !textarea) return
-  const chrome = section.getBoundingClientRect().height - textarea.getBoundingClientRect().height
+  if (!section?.parentElement) return
+  const chrome = section.getBoundingClientRect().height - editorHeight.value
   // Keep room for the table title, toolbar, and usable grid rows.
   maxEditorHeight.value = Math.max(
     minEditorHeight,
@@ -145,15 +145,10 @@ watch(
 watch(activeId, async () => {
   naming.value = false
   feedback.value = ''
-  scrollTop.value = 0
   await nextTick()
   document
     .getElementById(`${activeId.value}-tab`)
     ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  if (editor.value) {
-    editor.value.scrollTop = 0
-    editor.value.scrollLeft = 0
-  }
 })
 function draftName(draft: QueryDraft) {
   const query = saved.value.find((item) => item.id === draft.savedId)
@@ -362,36 +357,16 @@ function run() {
       </div>
     </div>
     <div id="query-panel" class="query-panel" role="tabpanel" :aria-labelledby="`${activeId}-tab`">
-      <div class="query-code">
-        <div class="query-gutter" aria-hidden="true">
-          <div :style="{ transform: `translateY(-${scrollTop}px)` }">
-            <span v-for="line in lineCount" :key="line">{{ line }}</span>
-          </div>
-        </div>
-        <textarea
-          id="sql-editor"
-          ref="editor"
-          v-model="sql"
-          class="sql-editor"
-          :style="{ height: `${editorHeight}px` }"
-          rows="5"
-          wrap="off"
-          aria-label="SQL query"
-          maxlength="12000"
-          spellcheck="false"
-          autocapitalize="off"
-          autocomplete="off"
-          aria-describedby="query-help"
-          placeholder="SELECT * FROM …"
-          @input="feedback = ''"
-          @scroll="scrollTop = ($event.target as HTMLTextAreaElement).scrollTop"
-          @keydown="
-            ($event.ctrlKey || $event.metaKey) &&
-            $event.key === 'Enter' &&
-            ($event.preventDefault(), run())
-          "
-        />
-      </div>
+      <SqlEditor
+        :key="activeId"
+        ref="editor"
+        v-model="sql"
+        :height="editorHeight"
+        :tables="tables"
+        :selected-table="selectedTable"
+        @update:model-value="feedback = ''"
+        @run="run"
+      />
     </div>
     <form
       v-if="naming"
@@ -420,6 +395,9 @@ function run() {
             ? 'Sample: SELECT * FROM a table, with optional LIMIT'
             : 'Read only · Ctrl / ⌘ + Enter to run'
       }}</span>
+      <span class="query-completion-help"
+        >Ctrl + Space: suggest · Tab / Enter: accept · Esc: dismiss</span
+      >
       <span v-if="feedback" role="status">{{ feedback }}</span>
     </div>
     <p v-if="storageError" class="query-storage-error" role="alert">{{ storageError }}</p>

@@ -410,6 +410,8 @@ async function cellSaved() {
           :busy="busy || switching"
           :active-query="activeQuery"
           :demo="session.provider === 'demo'"
+          :tables="tables"
+          :selected-table="selectedTable"
           @run="runQuery"
           @activate="activateQuery"
           @close="queryViews.delete($event)"
