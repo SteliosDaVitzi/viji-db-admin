@@ -61,7 +61,11 @@ impl UpdateDatabaseSettings {
 
 /// Writes are deliberately separate from browsing and read-only SQL.
 #[derive(Deserialize)]
-#[serde(tag = "action", rename_all = "camelCase")]
+#[serde(
+    tag = "action",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum Mutation {
     Insert {
         schema: String,
@@ -88,6 +92,17 @@ pub enum Mutation {
     DropTable {
         schema: String,
         table: String,
+    },
+    AlterTableKeys {
+        schema: String,
+        table: String,
+        drop_primary_key: Option<String>,
+        #[serde(default)]
+        drop_unique_keys: Vec<String>,
+        #[serde(default)]
+        add_primary_key: Vec<String>,
+        #[serde(default)]
+        add_unique_keys: Vec<Vec<String>>,
     },
     Execute {
         sql: String,
@@ -235,7 +250,18 @@ pub struct Table {
     #[serde(default)]
     pub primary_keys: Vec<String>,
     #[serde(default)]
+    pub key_constraints: Vec<KeyConstraint>,
+    #[serde(default)]
+    pub referenceable_columns: Vec<String>,
+    #[serde(default)]
     pub foreign_keys: Vec<ForeignKey>,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyConstraint {
+    pub name: String,
+    pub kind: String,
+    pub columns: Vec<String>,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

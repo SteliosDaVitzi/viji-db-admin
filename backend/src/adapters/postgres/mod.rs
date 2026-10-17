@@ -321,20 +321,54 @@ impl DatabaseAdapter for PostgresAdapter {
                 kind: r.get("table_type"),
                 columns: r.get("columns"),
                 primary_keys: vec![],
+                key_constraints: vec![],
+                referenceable_columns: vec![],
                 foreign_keys: vec![],
             })
             .collect();
-        let primary_keys = sqlx::query("SELECT tc.table_schema,tc.table_name,kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_catalog=kcu.constraint_catalog AND tc.constraint_schema=kcu.constraint_schema AND tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema AND tc.table_name=kcu.table_name WHERE tc.constraint_type='PRIMARY KEY' ORDER BY tc.table_schema,tc.table_name,kcu.ordinal_position")
+        let key_constraints = sqlx::query("SELECT tc.table_schema,tc.table_name,tc.constraint_name,tc.constraint_type,kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_catalog=kcu.constraint_catalog AND tc.constraint_schema=kcu.constraint_schema AND tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema AND tc.table_name=kcu.table_name WHERE tc.constraint_type IN ('PRIMARY KEY','UNIQUE') AND tc.table_schema NOT IN ('pg_catalog','information_schema') ORDER BY tc.table_schema,tc.table_name,tc.constraint_name,kcu.ordinal_position")
             .fetch_all(&mut *tx).await?;
-        for key in primary_keys {
+        for key in key_constraints {
             let schema: String = key.get("table_schema");
             let table_name: String = key.get("table_name");
+            let name: String = key.get("constraint_name");
+            let kind: String = key.get("constraint_type");
             let column: String = key.get("column_name");
             if let Some(table) = tables
                 .iter_mut()
                 .find(|table| table.schema == schema && table.name == table_name)
             {
-                table.primary_keys.push(column);
+                if kind == "PRIMARY KEY" {
+                    table.primary_keys.push(column.clone());
+                }
+                if let Some(constraint) = table
+                    .key_constraints
+                    .iter_mut()
+                    .find(|constraint| constraint.name == name)
+                {
+                    constraint.columns.push(column);
+                } else {
+                    table.key_constraints.push(KeyConstraint {
+                        name,
+                        kind,
+                        columns: vec![column],
+                    });
+                }
+            }
+        }
+        // Include standalone unique indexes, not just named table constraints.
+        let referenceable = sqlx::query("SELECT n.nspname AS table_schema,c.relname AS table_name,a.attname AS column_name FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum=i.indkey[0] WHERE i.indisunique AND i.indisvalid AND i.indimmediate AND i.indpred IS NULL AND i.indexprs IS NULL AND i.indnkeyatts=1 AND n.nspname NOT IN ('pg_catalog','information_schema')")
+            .fetch_all(&mut *tx).await?;
+        for row in referenceable {
+            let schema: String = row.get("table_schema");
+            let name: String = row.get("table_name");
+            let column: String = row.get("column_name");
+            if let Some(table) = tables
+                .iter_mut()
+                .find(|table| table.schema == schema && table.name == name)
+                && !table.referenceable_columns.contains(&column)
+            {
+                table.referenceable_columns.push(column);
             }
         }
         let relationships = sqlx::query("SELECT con.conname AS constraint_name,source_ns.nspname AS table_schema,source_table.relname AS table_name,source_column.attname AS column_name,target_ns.nspname AS referenced_schema,target_table.relname AS referenced_table,target_column.attname AS referenced_column FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class source_table ON source_table.oid=con.conrelid JOIN pg_catalog.pg_namespace source_ns ON source_ns.oid=source_table.relnamespace JOIN pg_catalog.pg_class target_table ON target_table.oid=con.confrelid JOIN pg_catalog.pg_namespace target_ns ON target_ns.oid=target_table.relnamespace JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS source_key(attnum,ord) ON true JOIN LATERAL unnest(con.confkey) WITH ORDINALITY AS target_key(attnum,ord) ON target_key.ord=source_key.ord JOIN pg_catalog.pg_attribute source_column ON source_column.attrelid=source_table.oid AND source_column.attnum=source_key.attnum JOIN pg_catalog.pg_attribute target_column ON target_column.attrelid=target_table.oid AND target_column.attnum=target_key.attnum WHERE con.contype='f' ORDER BY source_ns.nspname,source_table.relname,con.conname,source_key.ord")

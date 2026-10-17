@@ -215,6 +215,8 @@ impl DatabaseAdapter for SqlServerAdapter {
                     kind: text(row, "TABLE_TYPE")?,
                     columns: vec![],
                     primary_keys: vec![],
+                    key_constraints: vec![],
+                    referenceable_columns: vec![],
                     foreign_keys: vec![],
                 });
             if let Some(name) = row
@@ -224,12 +226,41 @@ impl DatabaseAdapter for SqlServerAdapter {
                 table.columns.push(name.into());
             }
         }
-        let primary_keys = c.query("SELECT s.name AS table_schema,t.name AS table_name,col.name AS column_name FROM sys.indexes i JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id JOIN sys.tables t ON t.object_id=i.object_id JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.columns col ON col.object_id=ic.object_id AND col.column_id=ic.column_id WHERE i.is_primary_key=1 AND ic.key_ordinal>0 ORDER BY s.name,t.name,ic.key_ordinal",&[]).await.map_err(driver_error)?.into_first_result().await.map_err(driver_error)?;
-        for row in &primary_keys {
+        let key_constraints = c.query("SELECT s.name AS table_schema,t.name AS table_name,kc.name AS constraint_name,CASE kc.type WHEN 'PK' THEN 'PRIMARY KEY' ELSE 'UNIQUE' END AS constraint_type,col.name AS column_name FROM sys.key_constraints kc JOIN sys.tables t ON t.object_id=kc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.index_columns ic ON ic.object_id=kc.parent_object_id AND ic.index_id=kc.unique_index_id AND ic.key_ordinal>0 JOIN sys.columns col ON col.object_id=t.object_id AND col.column_id=ic.column_id WHERE kc.type IN ('PK','UQ') ORDER BY s.name,t.name,kc.name,ic.key_ordinal",&[]).await.map_err(driver_error)?.into_first_result().await.map_err(driver_error)?;
+        for row in &key_constraints {
             let schema = text(row, "table_schema")?;
             let table_name = text(row, "table_name")?;
             if let Some(table) = tables.get_mut(&(schema, table_name)) {
-                table.primary_keys.push(text(row, "column_name")?);
+                let kind = text(row, "constraint_type")?;
+                let name = text(row, "constraint_name")?;
+                let column = text(row, "column_name")?;
+                if kind == "PRIMARY KEY" {
+                    table.primary_keys.push(column.clone());
+                }
+                if let Some(constraint) = table
+                    .key_constraints
+                    .iter_mut()
+                    .find(|constraint| constraint.name == name)
+                {
+                    constraint.columns.push(column);
+                } else {
+                    table.key_constraints.push(KeyConstraint {
+                        name,
+                        kind,
+                        columns: vec![column],
+                    });
+                }
+            }
+        }
+        let referenceable = c.query("SELECT s.name AS table_schema,t.name AS table_name,MIN(col.name) AS column_name FROM sys.indexes i JOIN sys.tables t ON t.object_id=i.object_id JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id AND ic.key_ordinal>0 JOIN sys.columns col ON col.object_id=t.object_id AND col.column_id=ic.column_id WHERE i.is_unique=1 AND i.is_disabled=0 AND i.is_hypothetical=0 AND i.has_filter=0 GROUP BY s.name,t.name,i.index_id HAVING COUNT(*)=1", &[]).await.map_err(driver_error)?.into_first_result().await.map_err(driver_error)?;
+        for row in &referenceable {
+            let schema = text(row, "table_schema")?;
+            let name = text(row, "table_name")?;
+            let column = text(row, "column_name")?;
+            if let Some(table) = tables.get_mut(&(schema, name))
+                && !table.referenceable_columns.contains(&column)
+            {
+                table.referenceable_columns.push(column);
             }
         }
         let relationships = c.query("SELECT fk.name AS constraint_name,ss.name AS source_schema,st.name AS source_table,sc.name AS source_column,rs.name AS referenced_schema,rt.name AS referenced_table,rc.name AS referenced_column FROM sys.foreign_key_columns fkc JOIN sys.foreign_keys fk ON fk.object_id=fkc.constraint_object_id JOIN sys.tables st ON st.object_id=fkc.parent_object_id JOIN sys.schemas ss ON ss.schema_id=st.schema_id JOIN sys.columns sc ON sc.object_id=st.object_id AND sc.column_id=fkc.parent_column_id JOIN sys.tables rt ON rt.object_id=fkc.referenced_object_id JOIN sys.schemas rs ON rs.schema_id=rt.schema_id JOIN sys.columns rc ON rc.object_id=rt.object_id AND rc.column_id=fkc.referenced_column_id ORDER BY ss.name,st.name,fk.name,fkc.constraint_column_id",&[]).await.map_err(driver_error)?.into_first_result().await.map_err(driver_error)?;

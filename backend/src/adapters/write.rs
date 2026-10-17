@@ -21,6 +21,182 @@ pub fn identifier(name: &str, maximum: usize, quote: fn(&str) -> String) -> AppR
     Ok(quote(name))
 }
 
+pub struct TableKeyChange<'a> {
+    pub provider: &'a str,
+    pub schema: &'a str,
+    pub table: &'a str,
+    pub drop_primary_key: Option<&'a str>,
+    pub drop_unique_keys: &'a [String],
+    pub add_primary_key: &'a [String],
+    pub add_unique_keys: &'a [Vec<String>],
+}
+
+pub fn alter_table_key_statements(
+    change: TableKeyChange<'_>,
+    maximum: usize,
+    quote: fn(&str) -> String,
+) -> AppResult<Vec<String>> {
+    let TableKeyChange {
+        provider,
+        schema,
+        table,
+        drop_primary_key,
+        drop_unique_keys,
+        add_primary_key,
+        add_unique_keys,
+    } = change;
+    if !matches!(provider, "postgres" | "mysql" | "mariadb" | "sqlserver") {
+        return Err(invalid("This provider does not support key changes."));
+    }
+    if drop_primary_key.is_none()
+        && drop_unique_keys.is_empty()
+        && add_primary_key.is_empty()
+        && add_unique_keys.is_empty()
+    {
+        return Err(invalid("Select a primary key or unique key change first."));
+    }
+    if add_primary_key.len() > 32 || add_unique_keys.len() > 32 {
+        return Err(invalid(
+            "A key change can contain at most 32 key definitions.",
+        ));
+    }
+    let schema = identifier(schema, maximum, quote)?;
+    let table = identifier(table, maximum, quote)?;
+    let target = format!("{schema}.{table}");
+    let mut drops = Vec::new();
+    if let Some(name) = drop_primary_key {
+        if provider == "mysql" || provider == "mariadb" {
+            drops.push("DROP PRIMARY KEY".to_owned());
+        } else {
+            drops.push(format!(
+                "DROP CONSTRAINT {}",
+                identifier(name, maximum, quote)?
+            ));
+        }
+    }
+    for name in drop_unique_keys {
+        drops.push(if provider == "mysql" || provider == "mariadb" {
+            format!("DROP INDEX {}", identifier(name, maximum, quote)?)
+        } else {
+            format!("DROP CONSTRAINT {}", identifier(name, maximum, quote)?)
+        });
+    }
+    let quoted_columns = |columns: &[String]| -> AppResult<String> {
+        if columns.is_empty() || columns.len() > 32 {
+            return Err(invalid("Each key must contain between 1 and 32 fields."));
+        }
+        let mut seen = std::collections::HashSet::new();
+        let columns = columns
+            .iter()
+            .map(|column| {
+                let unique_name = if provider == "postgres" {
+                    column.clone()
+                } else {
+                    column.to_lowercase()
+                };
+                if !seen.insert(unique_name) {
+                    return Err(invalid(
+                        "A key cannot contain the same field more than once.",
+                    ));
+                }
+                identifier(column, maximum, quote)
+            })
+            .collect::<AppResult<Vec<_>>>()?;
+        Ok(columns.join(", "))
+    };
+    let mut additions = Vec::new();
+    if !add_primary_key.is_empty() {
+        additions.push(format!(
+            "ADD CONSTRAINT {} PRIMARY KEY ({})",
+            identifier(
+                &format!("webdb_pk_{}", uuid::Uuid::new_v4().simple()),
+                maximum,
+                quote
+            )?,
+            quoted_columns(add_primary_key)?
+        ));
+    }
+    for columns in add_unique_keys {
+        additions.push(format!(
+            "ADD CONSTRAINT {} UNIQUE ({})",
+            identifier(
+                &format!("webdb_uq_{}", uuid::Uuid::new_v4().simple()),
+                maximum,
+                quote
+            )?,
+            quoted_columns(columns)?
+        ));
+    }
+    if provider == "sqlserver" {
+        let mut statements = drops
+            .into_iter()
+            .map(|operation| format!("ALTER TABLE {target} {operation}"))
+            .collect::<Vec<_>>();
+        statements.extend(
+            additions
+                .into_iter()
+                .map(|operation| format!("ALTER TABLE {target} {operation}")),
+        );
+        return Ok(statements);
+    }
+    if (provider == "mysql" || provider == "mariadb") && !add_primary_key.is_empty() {
+        additions[0] = format!("ADD PRIMARY KEY ({})", quoted_columns(add_primary_key)?);
+    }
+    drops.extend(additions);
+    Ok(vec![format!("ALTER TABLE {target} {}", drops.join(", "))])
+}
+
+pub fn validate_key_columns(
+    requested: &[String],
+    available: &[String],
+    provider: &str,
+) -> AppResult<()> {
+    let equal = |left: &str, right: &str| {
+        if provider == "postgres" {
+            left == right
+        } else {
+            left.eq_ignore_ascii_case(right)
+        }
+    };
+    for column in requested {
+        if !available.iter().any(|candidate| equal(candidate, column)) {
+            return Err(invalid(
+                "A selected key field no longer exists. Refresh the table.",
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub fn validate_key_drops(
+    drop_primary_key: Option<&str>,
+    drop_unique_keys: &[String],
+    available: &[KeyConstraint],
+) -> AppResult<()> {
+    if let Some(name) = drop_primary_key
+        && !available
+            .iter()
+            .any(|key| key.kind == "PRIMARY KEY" && key.name == name)
+    {
+        return Err(invalid(
+            "The primary key changed. Refresh the table and try again.",
+        ));
+    }
+    let mut seen = std::collections::HashSet::new();
+    for name in drop_unique_keys {
+        if !seen.insert(name)
+            || !available
+                .iter()
+                .any(|key| key.kind == "UNIQUE" && key.name == *name)
+        {
+            return Err(invalid(
+                "A unique key changed. Refresh the table and try again.",
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub fn statement(sql: &str, dialect: &dyn Dialect) -> AppResult<String> {
     if sql.trim().is_empty() || sql.len() > 12_000 || sql.contains("/*!") || sql.contains("/*M!") {
         return Err(invalid(
@@ -181,5 +357,91 @@ mod tests {
             default_value: None,
         }];
         assert!(keys(&columns, serde_json::json!({"id":"1"}).as_object().unwrap()).is_err());
+    }
+
+    #[test]
+    fn key_change_statements_quote_identifiers_and_use_provider_syntax() {
+        let quote_pg = |name: &str| format!("\"{}\"", name.replace('"', "\"\""));
+        let quote_mysql = |name: &str| format!("`{}`", name.replace('`', "``"));
+        let pg = alter_table_key_statements(
+            TableKeyChange {
+                provider: "postgres",
+                schema: "odd schema",
+                table: "t\"x",
+                drop_primary_key: Some("old pk"),
+                drop_unique_keys: &[],
+                add_primary_key: &["a\"b".into(), "c".into()],
+                add_unique_keys: &[vec!["c".into(), "d".into()]],
+            },
+            63,
+            quote_pg,
+        )
+        .unwrap();
+        assert!(pg[0].contains("DROP CONSTRAINT \"old pk\""));
+        assert!(pg[0].contains("\"a\"\"b\", \"c\""));
+        assert!(pg[0].contains("ADD CONSTRAINT \"webdb_uq_"));
+        let mysql = alter_table_key_statements(
+            TableKeyChange {
+                provider: "mysql",
+                schema: "db",
+                table: "t",
+                drop_primary_key: Some("PRIMARY"),
+                drop_unique_keys: &["uq".into()],
+                add_primary_key: &["id".into()],
+                add_unique_keys: &[],
+            },
+            64,
+            quote_mysql,
+        )
+        .unwrap();
+        assert!(mysql[0].contains("DROP PRIMARY KEY, DROP INDEX `uq`, ADD PRIMARY KEY (`id`)"));
+        let sqlserver = alter_table_key_statements(
+            TableKeyChange {
+                provider: "sqlserver",
+                schema: "dbo",
+                table: "t",
+                drop_primary_key: Some("oldpk"),
+                drop_unique_keys: &[],
+                add_primary_key: &["id".into()],
+                add_unique_keys: &[],
+            },
+            128,
+            |name| format!("[{}]", name.replace(']', "]]")),
+        )
+        .unwrap();
+        assert_eq!(sqlserver.len(), 2);
+        assert!(sqlserver[0].contains("DROP CONSTRAINT [oldpk]"));
+        assert!(sqlserver[1].contains("ADD CONSTRAINT [webdb_pk_"));
+    }
+
+    #[test]
+    fn key_mutation_accepts_camel_case_contract_and_rejects_non_key_drops() {
+        let mutation: Mutation = serde_json::from_value(serde_json::json!({
+            "action": "alterTableKeys",
+            "schema": "public",
+            "table": "items",
+            "dropPrimaryKey": "items_pkey",
+            "dropUniqueKeys": ["items_name_key"],
+            "addPrimaryKey": ["id", "tenant_id"],
+            "addUniqueKeys": [["name", "tenant_id"]]
+        }))
+        .unwrap();
+        assert!(matches!(mutation, Mutation::AlterTableKeys { .. }));
+
+        let keys = vec![
+            KeyConstraint {
+                name: "items_pkey".into(),
+                kind: "PRIMARY KEY".into(),
+                columns: vec!["id".into()],
+            },
+            KeyConstraint {
+                name: "items_name_key".into(),
+                kind: "UNIQUE".into(),
+                columns: vec!["name".into()],
+            },
+        ];
+        assert!(validate_key_drops(Some("items_pkey"), &["items_name_key".into()], &keys).is_ok());
+        assert!(validate_key_drops(Some("items_name_key"), &[], &keys).is_err());
+        assert!(validate_key_drops(None, &["foreign_key".into()], &keys).is_err());
     }
 }

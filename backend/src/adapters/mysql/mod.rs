@@ -106,19 +106,75 @@ pub(crate) async fn tables(input: &ConnectionInput) -> AppResult<Vec<Table>> {
                 kind: record.try_get("TABLE_TYPE")?,
                 columns: vec![],
                 primary_keys: vec![],
+                key_constraints: vec![],
+                referenceable_columns: vec![],
                 foreign_keys: vec![],
             });
         if let Some(name) = record.try_get::<Option<String>, _>("COLUMN_NAME")? {
             table.columns.push(name);
         }
     }
-    let primary_keys = sqlx::query("SELECT TABLE_SCHEMA,TABLE_NAME,COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=DATABASE() AND CONSTRAINT_NAME='PRIMARY' ORDER BY TABLE_NAME,ORDINAL_POSITION")
+    let key_constraints = sqlx::query("SELECT tc.TABLE_SCHEMA,tc.TABLE_NAME,tc.CONSTRAINT_NAME,tc.CONSTRAINT_TYPE,kcu.COLUMN_NAME FROM information_schema.TABLE_CONSTRAINTS tc JOIN information_schema.KEY_COLUMN_USAGE kcu ON kcu.CONSTRAINT_SCHEMA=tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA=tc.TABLE_SCHEMA AND kcu.TABLE_NAME=tc.TABLE_NAME AND kcu.CONSTRAINT_NAME=tc.CONSTRAINT_NAME WHERE tc.TABLE_SCHEMA=DATABASE() AND tc.CONSTRAINT_TYPE IN ('PRIMARY KEY','UNIQUE') ORDER BY tc.TABLE_NAME,tc.CONSTRAINT_NAME,kcu.ORDINAL_POSITION")
         .fetch_all(&mut connection).await?;
-    for key in primary_keys {
+    for key in key_constraints {
         let schema: String = key.try_get("TABLE_SCHEMA")?;
         let table_name: String = key.try_get("TABLE_NAME")?;
         if let Some(table) = tables.get_mut(&(schema, table_name)) {
-            table.primary_keys.push(key.try_get("COLUMN_NAME")?);
+            let kind: String = key.try_get("CONSTRAINT_TYPE")?;
+            let name: String = key.try_get("CONSTRAINT_NAME")?;
+            let column: String = key.try_get("COLUMN_NAME")?;
+            if kind == "PRIMARY KEY" {
+                table.primary_keys.push(column.clone());
+            }
+            if let Some(constraint) = table
+                .key_constraints
+                .iter_mut()
+                .find(|constraint| constraint.name == name)
+            {
+                constraint.columns.push(column);
+            } else {
+                table.key_constraints.push(KeyConstraint {
+                    name,
+                    kind,
+                    columns: vec![column],
+                });
+            }
+        }
+    }
+    let referenceable = sqlx::query("SELECT TABLE_SCHEMA,TABLE_NAME,MIN(COLUMN_NAME) AS COLUMN_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND NON_UNIQUE=0 GROUP BY TABLE_SCHEMA,TABLE_NAME,INDEX_NAME HAVING COUNT(*)=1 AND COUNT(COLUMN_NAME)=1 AND MIN(SUB_PART) IS NULL")
+        .fetch_all(&mut connection).await?;
+    for row in referenceable {
+        let schema: String = row.try_get("TABLE_SCHEMA")?;
+        let name: String = row.try_get("TABLE_NAME")?;
+        let column: String = row.try_get("COLUMN_NAME")?;
+        if let Some(table) = tables.get_mut(&(schema, name))
+            && !table.referenceable_columns.contains(&column)
+        {
+            table.referenceable_columns.push(column);
+        }
+    }
+    // MariaDB and older/configured MySQL InnoDB instances also accept a leading
+    // indexed column. New MySQL installations can require standard unique keys.
+    let restriction = sqlx::query("SHOW VARIABLES LIKE 'restrict_fk_on_non_standard_key'")
+        .fetch_optional(&mut connection)
+        .await?;
+    let allow_nonstandard = restriction
+        .as_ref()
+        .map(|row| row.try_get::<String, _>("Value"))
+        .transpose()?
+        .is_none_or(|value| value.eq_ignore_ascii_case("OFF") || value == "0");
+    if allow_nonstandard {
+        let indexed = sqlx::query("SELECT DISTINCT s.TABLE_SCHEMA,s.TABLE_NAME,s.COLUMN_NAME FROM information_schema.STATISTICS s JOIN information_schema.TABLES t ON t.TABLE_SCHEMA=s.TABLE_SCHEMA AND t.TABLE_NAME=s.TABLE_NAME WHERE s.TABLE_SCHEMA=DATABASE() AND t.ENGINE='InnoDB' AND s.INDEX_TYPE='BTREE' AND s.SEQ_IN_INDEX=1 AND s.SUB_PART IS NULL AND s.COLUMN_NAME IS NOT NULL")
+            .fetch_all(&mut connection).await?;
+        for row in indexed {
+            let schema: String = row.try_get("TABLE_SCHEMA")?;
+            let name: String = row.try_get("TABLE_NAME")?;
+            let column: String = row.try_get("COLUMN_NAME")?;
+            if let Some(table) = tables.get_mut(&(schema, name))
+                && !table.referenceable_columns.contains(&column)
+            {
+                table.referenceable_columns.push(column);
+            }
         }
     }
     let relationships = sqlx::query("SELECT CONSTRAINT_NAME,TABLE_SCHEMA,TABLE_NAME,COLUMN_NAME,REFERENCED_TABLE_SCHEMA,REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL ORDER BY TABLE_NAME,CONSTRAINT_NAME,ORDINAL_POSITION")

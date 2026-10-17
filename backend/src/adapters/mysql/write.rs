@@ -163,6 +163,70 @@ pub(crate) async fn mutate(
             affected_rows: execute(&mut connection, &sql).await?,
         });
     }
+    if let Mutation::AlterTableKeys {
+        schema,
+        table,
+        drop_primary_key,
+        drop_unique_keys,
+        add_primary_key,
+        add_unique_keys,
+    } = mutation
+    {
+        if schema != &input.database {
+            return Err(invalid("Choose a table in the active database."));
+        }
+        let mut connection = connect_mode(input, false).await?;
+        let rows = sqlx::query("SELECT c.COLUMN_NAME FROM information_schema.COLUMNS c JOIN information_schema.TABLES t ON t.TABLE_SCHEMA=c.TABLE_SCHEMA AND t.TABLE_NAME=c.TABLE_NAME WHERE c.TABLE_SCHEMA=? AND c.TABLE_NAME=? AND t.TABLE_TYPE='BASE TABLE' ORDER BY c.ORDINAL_POSITION")
+            .bind(schema).bind(table).fetch_all(&mut connection).await.map_err(write_error)?;
+        let available = rows
+            .iter()
+            .map(|row| row.get::<String, _>("COLUMN_NAME"))
+            .collect::<Vec<_>>();
+        if available.is_empty() {
+            return Err(invalid(
+                "Choose an accessible base table. Views remain read only.",
+            ));
+        }
+        let key_rows = sqlx::query("SELECT CONSTRAINT_NAME,CONSTRAINT_TYPE FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? AND CONSTRAINT_TYPE IN ('PRIMARY KEY','UNIQUE')")
+            .bind(schema).bind(table).fetch_all(&mut connection).await.map_err(write_error)?;
+        let current_keys = key_rows
+            .iter()
+            .map(|row| {
+                Ok(KeyConstraint {
+                    name: row.try_get("CONSTRAINT_NAME").map_err(write_error)?,
+                    kind: row.try_get("CONSTRAINT_TYPE").map_err(write_error)?,
+                    columns: vec![],
+                })
+            })
+            .collect::<AppResult<Vec<_>>>()?;
+        super::super::write::validate_key_drops(
+            drop_primary_key.as_deref(),
+            drop_unique_keys,
+            &current_keys,
+        )?;
+        let mut requested = add_primary_key.clone();
+        requested.extend(add_unique_keys.iter().flatten().cloned());
+        super::super::write::validate_key_columns(&requested, &available, &input.provider)?;
+        let statements = super::super::write::alter_table_key_statements(
+            super::super::write::TableKeyChange {
+                provider: &input.provider,
+                schema,
+                table,
+                drop_primary_key: drop_primary_key.as_deref(),
+                drop_unique_keys,
+                add_primary_key,
+                add_unique_keys,
+            },
+            64,
+            quote_identifier,
+        )?;
+        let statement = statements
+            .first()
+            .ok_or_else(|| invalid("No key changes were generated."))?;
+        return Ok(MutationResult {
+            affected_rows: execute(&mut connection, statement).await?,
+        });
+    }
     let (schema, table) = match mutation {
         Mutation::Insert { schema, table, .. }
         | Mutation::Update { schema, table, .. }

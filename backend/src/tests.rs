@@ -56,6 +56,8 @@ impl DatabaseAdapter for InstanceAdapter {
             kind: "BASE TABLE".into(),
             columns: vec![],
             primary_keys: vec![],
+            referenceable_columns: vec![],
+            key_constraints: vec![],
             foreign_keys: vec![],
         }])
     }

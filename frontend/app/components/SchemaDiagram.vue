@@ -18,6 +18,7 @@ const emit = defineEmits<{
   choose: [table: TableInfo]
   createTable: []
   editTable: [table: TableInfo]
+  prepareReference: [table: TableInfo, column: string]
 }>()
 
 const nodeWidth = 292
@@ -65,6 +66,83 @@ const relationshipDraft = ref<RelationshipChange | null>(null)
 const relationshipTargetKey = ref('')
 const applyingRelationship = ref(false)
 const relationshipError = ref('')
+const relationshipNotice = ref('')
+const linkHover = shallowRef<{ table: TableInfo; column: string } | null>(null)
+let ignoreFieldClick = false
+const activeRelationship = computed(() => relationshipDraft.value ?? pendingRelationship.value)
+
+function referenceKind(table: TableInfo, column: string) {
+  if (table.referenceableColumns !== undefined) {
+    if (!table.referenceableColumns.includes(column)) return 'needs-key'
+    if (primaryKeys(table).length === 1 && primaryKeys(table)[0] === column) return 'primary'
+    return table.keyConstraints?.some(
+      (key) => key.kind === 'UNIQUE' && key.columns.length === 1 && key.columns[0] === column,
+    )
+      ? 'unique'
+      : 'indexed'
+  }
+  if (primaryKeys(table).length === 1 && primaryKeys(table)[0] === column) return 'primary'
+  if (
+    table.keyConstraints?.some(
+      (key) => key.kind === 'UNIQUE' && key.columns.length === 1 && key.columns[0] === column,
+    )
+  )
+    return 'unique'
+  return table.keyConstraints === undefined ? 'unknown' : 'needs-key'
+}
+function referenceLabel(table: TableInfo, column: string) {
+  const kind = referenceKind(table, column)
+  return kind === 'primary'
+    ? 'Primary key'
+    : kind === 'unique'
+      ? 'Unique key'
+      : kind === 'indexed'
+        ? 'Reference index'
+        : kind === 'unknown'
+          ? 'Key details unavailable'
+          : 'Needs a unique key'
+}
+const targetNeedsKey = computed(
+  () =>
+    !!relationshipTarget.value &&
+    !!activeRelationship.value?.referencedColumn &&
+    referenceKind(relationshipTarget.value, activeRelationship.value.referencedColumn) ===
+      'needs-key',
+)
+const relationshipReady = computed(() => {
+  const link = activeRelationship.value
+  return (
+    !!link &&
+    !!relationshipSource.value?.columns.includes(link.foreignColumn) &&
+    !!relationshipTarget.value?.columns.includes(link.referencedColumn) &&
+    !(
+      link.foreignSchema === link.referencedSchema &&
+      link.foreignTable === link.referencedTable &&
+      link.foreignColumn === link.referencedColumn
+    ) &&
+    !targetNeedsKey.value
+  )
+})
+const relationshipGuidance = computed(() => {
+  const link = activeRelationship.value
+  if (!link?.referencedTable || !link.referencedColumn)
+    return 'Choose the table and field whose values this field should reference. Highlighted key fields are ready to link.'
+  if (targetNeedsKey.value)
+    return `${link.referencedTable}.${link.referencedColumn} needs its own primary or unique key so each value identifies one row. Choose a key field, or edit this table’s keys below.`
+  if (!relationshipReady.value)
+    return 'Choose two different fields. A field cannot reference itself.'
+  return `Each value in ${link.foreignTable}.${link.foreignColumn} will need a matching ${link.referencedTable}.${link.referencedColumn}. Field types must match; existing rows must also follow this rule.`
+})
+const relationshipFailureHint = computed(() => {
+  const error = relationshipError.value
+  if (/types?.*incompatible|type.*mismatch/i.test(error))
+    return 'Choose fields with matching database types in the selectors above. For example, an integer reference should point to an integer key.'
+  if (/existing rows|no matching|foreign key violation|constraint violation/i.test(error))
+    return 'Some existing values may have no matching row in the referenced table. Review those values before retrying, or choose a different pair of fields.'
+  if (/permission|privilege/i.test(error))
+    return 'This connection needs permission to alter the table and create its foreign key. Ask the database administrator for access, then retry.'
+  return 'Your field choices are preserved. Review the reason above, adjust the selected fields, and retry.'
+})
 
 function tableKey(table: Pick<TableInfo, 'schema' | 'name'>) {
   return JSON.stringify([table.schema, table.name])
@@ -135,8 +213,10 @@ const flowPositions = computed(() => layoutSchemaTables(sortedTables.value))
 watch(
   flowPositions,
   (layout, previousLayout) => {
-    positions.value = { ...layout }
-    if (previousLayout) void fitView()
+    positions.value = Object.fromEntries(
+      Object.entries(layout).map(([key, point]) => [key, positions.value[key] ?? point]),
+    )
+    if (previousLayout && Object.keys(previousLayout).length === 0) void fitView()
   },
   { immediate: true },
 )
@@ -158,28 +238,50 @@ const relationshipTables = computed(() =>
   props.tables.filter((table) => table.kind === 'BASE TABLE'),
 )
 const relationshipSource = computed(() =>
-  relationshipDraft.value
+  activeRelationship.value
     ? props.tables.find(
         (table) =>
-          table.schema === relationshipDraft.value!.foreignSchema &&
-          table.name === relationshipDraft.value!.foreignTable,
+          table.schema === activeRelationship.value!.foreignSchema &&
+          table.name === activeRelationship.value!.foreignTable,
       )
     : undefined,
 )
 const relationshipTarget = computed(() =>
-  relationshipDraft.value
+  activeRelationship.value
     ? props.tables.find(
         (table) =>
-          table.schema === relationshipDraft.value!.referencedSchema &&
-          table.name === relationshipDraft.value!.referencedTable,
+          table.schema === activeRelationship.value!.referencedSchema &&
+          table.name === activeRelationship.value!.referencedTable,
       )
     : undefined,
+)
+watch(
+  () => [
+    activeRelationship.value?.foreignSchema,
+    activeRelationship.value?.foreignTable,
+    activeRelationship.value?.foreignColumn,
+    activeRelationship.value?.referencedSchema,
+    activeRelationship.value?.referencedTable,
+    activeRelationship.value?.referencedColumn,
+  ],
+  () => {
+    const link = activeRelationship.value
+    if (!link) return
+    for (const [table, column] of [
+      [relationshipSource.value, link.foreignColumn],
+      [relationshipTarget.value, link.referencedColumn],
+    ] as const) {
+      if (table && table.columns.indexOf(column) >= displayedColumnCount(table)) {
+        expandedTables.value = new Set([...expandedTables.value, tableKey(table)])
+      }
+    }
+  },
+  { flush: 'sync' },
 )
 const canApplyRelationshipDraft = computed(
   () =>
     !!relationshipDraft.value?.constraintName &&
-    !!relationshipSource.value?.columns.includes(relationshipDraft.value.foreignColumn) &&
-    !!relationshipTarget.value?.columns.includes(relationshipDraft.value.referencedColumn) &&
+    relationshipReady.value &&
     !applyingRelationship.value &&
     !props.disabled,
 )
@@ -285,7 +387,13 @@ function linkDragPath(drag: Extract<(typeof moving)['value'], { kind: 'link' }>)
     y: (drag.y - bounds.top - pan.value.y) / zoom.value,
   }
   const start = fieldPointAtSide(drag.sourceTable, drag.sourceColumn, drag.sourceSide, 'output')
-  return curvePath(start, pointer)
+  const hover = linkHover.value
+  const end =
+    hover?.table.kind === 'BASE TABLE' &&
+    !(tableKey(hover.table) === drag.sourceKey && hover.column === drag.sourceColumn)
+      ? fieldInputPoint(hover.table, hover.column, positionOf(drag.sourceTable).x + nodeWidth / 2)
+      : pointer
+  return curvePath(start, end)
 }
 const edges = computed(() =>
   relationships.value.flatMap(({ source: foreignTable, foreignKey }) => {
@@ -374,6 +482,7 @@ function startFieldLink(
     event.button !== 0 ||
     !props.editable ||
     props.disabled ||
+    applyingRelationship.value ||
     pendingRelationship.value ||
     table.kind !== 'BASE TABLE'
   )
@@ -405,10 +514,17 @@ function connectionSide(event: PointerEvent): 'left' | 'right' {
 function fieldAtPoint(x: number, y: number, sourceX: number) {
   const element = document.elementFromPoint(x, y)
   const handle = element?.closest<HTMLElement>('[data-diagram-handle]')
-  if (handle?.dataset.diagramHandle === 'output') return null
   const row = element?.closest<HTMLElement>('[data-diagram-column-name]')
-  const key = row?.dataset.diagramTableKey
-  const column = row?.dataset.diagramColumnName
+  const card = element?.closest<HTMLElement>('[data-diagram-node-key]')
+  const key = row?.dataset.diagramTableKey ?? card?.dataset.diagramNodeKey
+  const table = key && props.tables.find((item) => tableKey(item) === key)
+  const column =
+    row?.dataset.diagramColumnName ??
+    (table
+      ? (table.columns.find((column) =>
+          ['primary', 'unique', 'indexed'].includes(referenceKind(table, column)),
+        ) ?? table.columns[0])
+      : undefined)
   const handleSide = handle?.dataset.diagramHandleSide
   const bounds = row?.getBoundingClientRect()
   const side =
@@ -417,7 +533,6 @@ function fieldAtPoint(x: number, y: number, sourceX: number) {
       : bounds && sourceX < bounds.left + bounds.width / 2
         ? 'left'
         : 'right'
-  const table = key && props.tables.find((item) => tableKey(item) === key)
   return table && column && (side === 'left' || side === 'right') ? { table, column, side } : null
 }
 function movePointer(event: PointerEvent) {
@@ -430,11 +545,12 @@ function movePointer(event: PointerEvent) {
     }
   } else if (drag.kind === 'node') {
     positions.value[drag.key] = {
-      x: Math.max(24, drag.originX + (event.clientX - drag.x) / zoom.value),
-      y: Math.max(24, drag.originY + (event.clientY - drag.y) / zoom.value),
+      x: drag.originX + (event.clientX - drag.x) / zoom.value,
+      y: drag.originY + (event.clientY - drag.y) / zoom.value,
     }
   } else {
     moving.value = { ...drag, x: event.clientX, y: event.clientY }
+    linkHover.value = fieldAtPoint(event.clientX, event.clientY, drag.originX)
   }
 }
 function stopPointer(event: PointerEvent) {
@@ -442,33 +558,118 @@ function stopPointer(event: PointerEvent) {
   if (!drag || drag.pointerId !== event.pointerId) return
   if (drag.kind === 'link' && event.type === 'pointerup') {
     const moved = Math.hypot(event.clientX - drag.originX, event.clientY - drag.originY) >= 8
+    ignoreFieldClick = moved
+    if (moved)
+      window.setTimeout(() => {
+        ignoreFieldClick = false
+      }, 0)
+    beginRelationship(drag.sourceTable, drag.sourceColumn)
     if (moved) {
       const target = fieldAtPoint(event.clientX, event.clientY, drag.originX)
-      if (!target || target.table.kind !== 'BASE TABLE') {
-        relationshipError.value = 'Drop the line on a field in a base table.'
-      } else if (tableKey(target.table) === drag.sourceKey && target.column === drag.sourceColumn) {
-        relationshipError.value = 'Choose a different field for the relationship.'
-      } else {
-        pendingRelationship.value = {
-          foreignSchema: drag.sourceTable.schema,
-          foreignTable: drag.sourceTable.name,
-          foreignColumn: drag.sourceColumn,
-          referencedSchema: target.table.schema,
-          referencedTable: target.table.name,
-          referencedColumn: target.column,
-        }
-        selectedRelationship.value = null
-        relationshipDraft.value = null
-      }
+      if (target?.table.kind === 'BASE TABLE') chooseLinkTarget(target.table, target.column)
     }
   }
   moving.value = null
+  linkHover.value = null
+}
+function beginRelationship(table?: TableInfo, column?: string) {
+  const source =
+    table ??
+    relationshipTables.value.find(
+      (item) => tableKey(item) === tableKey(props.selectedTable ?? { schema: '', name: '' }),
+    ) ??
+    relationshipTables.value[0]
+  if (!source) return
+  selectedRelationship.value = null
+  relationshipDraft.value = null
+  relationshipError.value = ''
+  relationshipNotice.value = ''
+  relationshipTargetKey.value = ''
+  pendingRelationship.value = {
+    foreignSchema: source.schema,
+    foreignTable: source.name,
+    foreignColumn: column ?? source.columns[0] ?? '',
+    referencedSchema: '',
+    referencedTable: '',
+    referencedColumn: '',
+  }
+}
+function chooseLinkTarget(table: TableInfo, column: string) {
+  const link = pendingRelationship.value
+  if (
+    !link ||
+    table.kind !== 'BASE TABLE' ||
+    (link.foreignSchema === table.schema &&
+      link.foreignTable === table.name &&
+      link.foreignColumn === column)
+  )
+    return
+  const source = relationshipSource.value
+  if (
+    source &&
+    ['primary', 'unique', 'indexed'].includes(referenceKind(source, link.foreignColumn)) &&
+    referenceKind(table, column) === 'needs-key'
+  ) {
+    pendingRelationship.value = {
+      foreignSchema: table.schema,
+      foreignTable: table.name,
+      foreignColumn: column,
+      referencedSchema: source.schema,
+      referencedTable: source.name,
+      referencedColumn: link.foreignColumn,
+    }
+    relationshipTargetKey.value = tableKey(source)
+    relationshipNotice.value = `Using ${source.name}.${link.foreignColumn} as the key: ${table.name}.${column} will store the reference. You can reverse this direction below.`
+    relationshipError.value = ''
+    return
+  }
+  relationshipNotice.value = ''
+  link.referencedSchema = table.schema
+  link.referencedTable = table.name
+  link.referencedColumn = column
+  relationshipTargetKey.value = tableKey(table)
+  relationshipError.value = ''
+}
+function clickField(table: TableInfo, column: string) {
+  if (ignoreFieldClick) {
+    ignoreFieldClick = false
+    return
+  }
+  if (
+    !props.editable ||
+    props.disabled ||
+    applyingRelationship.value ||
+    table.kind !== 'BASE TABLE'
+  )
+    return
+  if (pendingRelationship.value) chooseLinkTarget(table, column)
+  else beginRelationship(table, column)
+}
+function changeRelationshipSource(key: string) {
+  const table = relationshipTables.value.find((item) => tableKey(item) === key)
+  if (table) beginRelationship(table)
+}
+function reversePendingRelationship() {
+  const link = pendingRelationship.value
+  if (!link?.referencedTable) return
+  pendingRelationship.value = {
+    foreignSchema: link.referencedSchema,
+    foreignTable: link.referencedTable,
+    foreignColumn: link.referencedColumn,
+    referencedSchema: link.foreignSchema,
+    referencedTable: link.foreignTable,
+    referencedColumn: link.foreignColumn,
+  }
+  relationshipTargetKey.value = tableKey({ schema: link.foreignSchema, name: link.foreignTable })
+  relationshipError.value = ''
+  relationshipNotice.value = ''
 }
 function cancelPendingRelationship() {
   pendingRelationship.value = null
   selectedRelationship.value = null
   relationshipDraft.value = null
   relationshipError.value = ''
+  relationshipNotice.value = ''
 }
 function selectRelationship(relationship: RelationshipChange) {
   if (!props.editable || props.disabled) return
@@ -480,19 +681,33 @@ function selectRelationship(relationship: RelationshipChange) {
     name: relationship.referencedTable,
   })
   relationshipError.value = ''
+  relationshipNotice.value = ''
 }
 function changeRelationshipTarget(key: string) {
   relationshipTargetKey.value = key
   const targetTable = props.tables.find((table) => tableKey(table) === key)
-  if (!targetTable || !relationshipDraft.value) return
-  relationshipDraft.value.referencedSchema = targetTable.schema
-  relationshipDraft.value.referencedTable = targetTable.name
-  if (!targetTable.columns.includes(relationshipDraft.value.referencedColumn))
-    relationshipDraft.value.referencedColumn = targetTable.columns[0] ?? ''
+  const link = activeRelationship.value
+  if (!targetTable || !link) return
+  link.referencedSchema = targetTable.schema
+  link.referencedTable = targetTable.name
+  if (!targetTable.columns.includes(link.referencedColumn))
+    link.referencedColumn =
+      targetTable.columns.find((column) =>
+        ['primary', 'unique', 'indexed'].includes(referenceKind(targetTable, column)),
+      ) ??
+      targetTable.columns[0] ??
+      ''
+  relationshipError.value = ''
+  relationshipNotice.value = ''
+}
+function clearRelationshipFeedback() {
+  relationshipError.value = ''
+  relationshipNotice.value = ''
 }
 async function applyPendingRelationship() {
   const relationship = pendingRelationship.value
-  if (!relationship || applyingRelationship.value || props.disabled) return
+  if (!relationship || !relationshipReady.value || applyingRelationship.value || props.disabled)
+    return
   applyingRelationship.value = true
   relationshipError.value = ''
   try {
@@ -637,6 +852,17 @@ watch(
             v-if="editable"
             type="button"
             class="button secondary small schema-diagram-create"
+            aria-label="Link fields"
+            title="Connect a field to a key in another table"
+            :disabled="disabled || applyingRelationship || !relationshipTables.length"
+            @click="beginRelationship()"
+          >
+            <AppIcon name="link" :size="16" /><span>Link fields</span>
+          </button>
+          <button
+            v-if="editable"
+            type="button"
+            class="button secondary small schema-diagram-create"
             title="Add a table to this database"
             aria-label="Add table"
             :disabled="disabled"
@@ -712,6 +938,7 @@ watch(
 
       <div class="schema-diagram-legend" aria-label="Diagram legend">
         <span><AppIcon name="key" :size="13" /> Primary key</span>
+        <span><AppIcon name="check" :size="13" /> Unique key / reference index</span>
         <span><AppIcon name="link" :size="13" /> Foreign key</span>
         <span class="diagram-edge-key"><i /> Declared relationship</span>
         <span
@@ -723,7 +950,7 @@ watch(
         <span v-else class="diagram-legend-hint">
           {{
             editable
-              ? 'Drag output points to input points. Click relationships to edit or remove them. Drag cards to adjust and empty space to pan.'
+              ? 'Drag between fields, or click a field then its target. Key fields can receive references. Drag table headings to move; drag empty space to pan.'
               : 'Flow from source tables top to bottom. Drag cards to adjust. Drag empty space to pan.'
           }}
         </span>
@@ -731,49 +958,51 @@ watch(
 
       <section
         v-if="
-          moving?.kind === 'link' ||
-          pendingRelationship ||
-          selectedRelationship ||
-          relationshipError
+          moving?.kind !== 'link' &&
+          (pendingRelationship || selectedRelationship || relationshipError)
         "
         class="diagram-relationship-editor"
         aria-live="polite"
       >
         <div class="diagram-relationship-copy">
           <strong>
-            {{
-              selectedRelationship
-                ? 'Edit relationship'
-                : moving?.kind === 'link'
-                  ? 'Connect fields'
-                  : 'New relationship'
-            }}
+            {{ selectedRelationship ? 'Edit relationship' : 'New relationship' }}
           </strong>
-          <span v-if="pendingRelationship">
-            {{ pendingRelationship.foreignSchema }}.{{ pendingRelationship.foreignTable }}.{{
-              pendingRelationship.foreignColumn
-            }}
-            → {{ pendingRelationship.referencedSchema }}.{{
-              pendingRelationship.referencedTable
-            }}.{{ pendingRelationship.referencedColumn }}
-          </span>
-          <span v-else-if="moving?.kind === 'link'">
-            Drop on the referenced field. It must be a primary key or unique field with a compatible
-            type.
-          </span>
-          <span v-else-if="selectedRelationship">
-            Change either field or the referenced table, or remove this relationship.
-          </span>
-          <span v-else>Drag from an output point to the referenced field's input point.</span>
+          <span v-if="activeRelationship">{{ relationshipGuidance }}</span>
+          <span v-if="relationshipNotice" class="diagram-relationship-notice">{{
+            relationshipNotice
+          }}</span>
           <span v-if="relationshipError" class="diagram-relationship-error" role="alert">
             {{ relationshipError }}
           </span>
         </div>
-        <div v-if="relationshipDraft && selectedRelationship" class="diagram-relationship-fields">
-          <label>
-            Foreign field
+        <div v-if="activeRelationship" class="diagram-relationship-fields">
+          <label v-if="pendingRelationship">
+            Table storing the value
             <select
-              v-model="relationshipDraft.foreignColumn"
+              :value="
+                tableKey({
+                  schema: activeRelationship.foreignSchema,
+                  name: activeRelationship.foreignTable,
+                })
+              "
+              :disabled="disabled || applyingRelationship"
+              @change="changeRelationshipSource(($event.target as HTMLSelectElement).value)"
+            >
+              <option
+                v-for="table in relationshipTables"
+                :key="tableKey(table)"
+                :value="tableKey(table)"
+              >
+                {{ table.schema }}.{{ table.name }}
+              </option>
+            </select>
+          </label>
+          <label>
+            Field storing the value
+            <select
+              v-model="activeRelationship.foreignColumn"
+              @change="clearRelationshipFeedback"
               :disabled="disabled || applyingRelationship"
             >
               <option
@@ -786,12 +1015,13 @@ watch(
             </select>
           </label>
           <label>
-            Referenced table
+            Table to reference
             <select
               :value="relationshipTargetKey"
               :disabled="disabled || applyingRelationship"
               @change="changeRelationshipTarget(($event.target as HTMLSelectElement).value)"
             >
+              <option value="" disabled>Choose a table</option>
               <option
                 v-for="table in relationshipTables"
                 :key="tableKey(table)"
@@ -802,22 +1032,34 @@ watch(
             </select>
           </label>
           <label>
-            Referenced field
+            Key field to reference
             <select
-              v-model="relationshipDraft.referencedColumn"
+              v-model="activeRelationship.referencedColumn"
+              @change="clearRelationshipFeedback"
               :disabled="disabled || applyingRelationship"
             >
+              <option value="" disabled>Choose a field</option>
               <option
                 v-for="field in relationshipTarget?.columns || []"
                 :key="field"
                 :value="field"
               >
-                {{ field }}
+                {{ field }} —
+                {{ relationshipTarget ? referenceLabel(relationshipTarget, field) : '' }}
               </option>
             </select>
           </label>
         </div>
         <div v-if="pendingRelationship" class="diagram-relationship-actions">
+          <button
+            v-if="pendingRelationship.referencedTable"
+            type="button"
+            class="button secondary small"
+            :disabled="disabled || applyingRelationship"
+            @click="reversePendingRelationship"
+          >
+            Reverse direction
+          </button>
           <button
             type="button"
             class="button secondary small"
@@ -829,13 +1071,44 @@ watch(
           <button
             type="button"
             class="button small"
-            :disabled="disabled || applyingRelationship"
+            :disabled="disabled || applyingRelationship || !relationshipReady"
             @click="applyPendingRelationship"
           >
             {{ applyingRelationship ? 'Applying…' : 'Apply relationship' }}
           </button>
         </div>
-        <div v-else-if="selectedRelationship" class="diagram-relationship-actions">
+        <div v-if="targetNeedsKey && relationshipTarget" class="diagram-relationship-recovery">
+          <span
+            >A primary key identifies a row. A unique key makes this field safe to reference without
+            replacing the table’s primary key.</span
+          >
+          <button
+            type="button"
+            class="button secondary small"
+            :disabled="disabled || applyingRelationship"
+            @click="
+              emit('prepareReference', relationshipTarget, activeRelationship!.referencedColumn)
+            "
+          >
+            Prepare unique key for {{ activeRelationship?.referencedColumn }}
+          </button>
+        </div>
+        <div
+          v-else-if="relationshipError && relationshipSource && relationshipTarget"
+          class="diagram-relationship-recovery"
+        >
+          <span>{{ relationshipFailureHint }}</span>
+          <button
+            v-if="/primary key|unique|index/i.test(relationshipError)"
+            type="button"
+            class="button secondary small"
+            :disabled="disabled || applyingRelationship"
+            @click="emit('editTable', relationshipTarget)"
+          >
+            Edit {{ relationshipTarget.name }} keys
+          </button>
+        </div>
+        <div v-if="selectedRelationship" class="diagram-relationship-actions">
           <button
             type="button"
             class="button secondary small"
@@ -970,6 +1243,7 @@ watch(
             v-for="table in visibleTables"
             :key="tableKey(table)"
             class="schema-diagram-table"
+            :data-diagram-node-key="tableKey(table)"
             :class="{
               'is-current':
                 selectedTable?.schema === table.schema && selectedTable.name === table.name,
@@ -1013,13 +1287,42 @@ watch(
                     moving?.kind === 'link' &&
                     moving.sourceKey === tableKey(table) &&
                     moving.sourceColumn === column,
+                  'is-reference-ready':
+                    (moving?.kind === 'link' || pendingRelationship) &&
+                    ['primary', 'unique', 'indexed'].includes(referenceKind(table, column)),
+                  'is-reference-hover': linkHover?.table === table && linkHover.column === column,
+                  'is-pending-source':
+                    pendingRelationship?.foreignSchema === table.schema &&
+                    pendingRelationship.foreignTable === table.name &&
+                    pendingRelationship.foreignColumn === column,
+                  'is-pending-target':
+                    activeRelationship?.referencedSchema === table.schema &&
+                    activeRelationship.referencedTable === table.name &&
+                    activeRelationship.referencedColumn === column,
+                  'is-reference-needs-key':
+                    referenceKind(table, column) === 'needs-key' &&
+                    ((linkHover?.table === table && linkHover.column === column) ||
+                      (activeRelationship?.referencedSchema === table.schema &&
+                        activeRelationship.referencedTable === table.name &&
+                        activeRelationship.referencedColumn === column)),
                 }"
+                :title="
+                  editable
+                    ? `${table.name}.${column}: ${referenceLabel(table, column)}. Click to choose a relationship field.`
+                    : column
+                "
                 :data-diagram-table-key="tableKey(table)"
                 :data-diagram-column-name="column"
                 @pointerdown.stop="startFieldLink($event, table, column, connectionSide($event))"
+                @click.stop="clickField(table, column)"
               >
                 <span class="schema-column-mark">
                   <AppIcon v-if="primaryKeys(table).includes(column)" name="key" :size="13" />
+                  <AppIcon
+                    v-else-if="['unique', 'indexed'].includes(referenceKind(table, column))"
+                    name="check"
+                    :size="13"
+                  />
                   <AppIcon v-else-if="isForeignKey(table, column)" name="link" :size="13" />
                   <i v-else />
                 </span>
@@ -1034,19 +1337,33 @@ watch(
                 <span v-else-if="isForeignKey(table, column)" class="schema-column-badge foreign"
                   >FK</span
                 >
+                <span
+                  v-else-if="referenceKind(table, column) === 'unique'"
+                  class="schema-column-badge unique"
+                  >UK</span
+                >
+                <span
+                  v-else-if="referenceKind(table, column) === 'indexed'"
+                  class="schema-column-badge unique"
+                  title="Eligible reference index"
+                  >IDX</span
+                >
                 <template v-if="editable && table.kind === 'BASE TABLE'">
                   <button
                     v-for="side in connectionSides"
                     :key="`input-${side}`"
                     type="button"
                     class="schema-column-handle input"
-                    :class="`handle-${side}`"
+                    :class="[
+                      `handle-${side}`,
+                      { 'needs-key': referenceKind(table, column) === 'needs-key' },
+                    ]"
                     :data-diagram-handle="'input'"
                     :data-diagram-handle-side="side"
-                    :aria-label="`Input point for ${table.name}.${column}`"
-                    :title="`Connect to ${column}`"
+                    :aria-label="`Reference ${table.name}.${column}: ${referenceLabel(table, column)}`"
+                    :title="`Reference ${column}: ${referenceLabel(table, column)}`"
                     :disabled="disabled"
-                    @pointerdown.stop
+                    @pointerdown.stop="startFieldLink($event, table, column, side)"
                   />
                   <button
                     v-for="side in connectionSides"

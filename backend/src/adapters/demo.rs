@@ -137,6 +137,12 @@ impl DatabaseAdapter for DemoAdapter {
                     .map(|(columns, _)| columns.into_iter().map(|column| column.name).collect())
                     .unwrap_or_default(),
                 primary_keys: vec!["id".into()],
+                referenceable_columns: vec!["id".into()],
+                key_constraints: vec![KeyConstraint {
+                    name: format!("{name}_pkey"),
+                    kind: "PRIMARY KEY".into(),
+                    columns: vec!["id".into()],
+                }],
                 foreign_keys: if name == "orders" {
                     vec![ForeignKey {
                         name: "orders_customer_id_fkey".into(),

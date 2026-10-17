@@ -14,6 +14,7 @@ const editor = ref<'insert' | 'delete' | 'schema' | null>(null)
 const schemaAction = ref<'execute' | 'createDatabase'>('execute')
 const schemaTargetTable = ref<TableInfo | null>(null)
 const diagramTableEditor = ref<TableInfo | null | undefined>()
+const diagramSuggestedUniqueColumn = ref<string>()
 const diagramMutationBusy = ref(false)
 const editingCell = ref<{
   row: Record<string, unknown>
@@ -81,7 +82,7 @@ function workspaceContext(event: MouseEvent) {
 }
 function tableContext(event: MouseEvent, table: TableInfo) {
   const disabled = busy.value || switching.value
-  showContext(event, table.name, [
+  const actions: ContextAction[] = [
     { label: 'Browse table', disabled, run: () => workspaceTabs.openTable(table) },
     {
       label: 'View structure',
@@ -91,6 +92,14 @@ function tableContext(event: MouseEvent, table: TableInfo) {
         tab.value = 'structure'
       },
     },
+  ]
+  if (schemaEditable.value && table.kind === 'BASE TABLE')
+    actions.push({
+      label: 'Edit table details',
+      disabled: disabled || diagramMutationBusy.value,
+      run: () => openDiagramTableEditor(table),
+    })
+  actions.push(
     {
       label: 'Copy table name',
       run: () =>
@@ -99,7 +108,8 @@ function tableContext(event: MouseEvent, table: TableInfo) {
         ),
     },
     { label: 'Refresh explorer', disabled, run: db.refreshExplorer },
-  ])
+  )
+  showContext(event, table.name, actions)
 }
 function schemaContext(event: MouseEvent, schema: string) {
   showContext(event, schema, [
@@ -164,14 +174,15 @@ function openSchemaEditor(
     : selectedTable.value
   editor.value = 'schema'
 }
-function openDiagramTableEditor(table: TableInfo | null) {
+function openDiagramTableEditor(table: TableInfo | null, suggestedUniqueColumn?: string) {
+  diagramSuggestedUniqueColumn.value = suggestedUniqueColumn
   diagramTableEditor.value = table
 }
 async function diagramTableSaved() {
   const created = diagramTableEditor.value === null
   diagramTableEditor.value = undefined
   workspaceTabs.invalidate()
-  toast.show(created ? 'Table created successfully.' : 'Table fields updated successfully.')
+  toast.show(created ? 'Table created successfully.' : 'Table details updated successfully.')
   explorerKey.value++
   await db.refreshExplorer()
 }
@@ -673,6 +684,18 @@ async function cellSaved() {
                 Insert record
               </button>
               <button
+                v-if="
+                  schemaEditable &&
+                  selectedTable?.kind === 'BASE TABLE' &&
+                  !workspaceTabs.queryActive.value
+                "
+                class="button secondary small"
+                :disabled="busy || switching || diagramMutationBusy"
+                @click="openDiagramTableEditor(selectedTable)"
+              >
+                Edit table details
+              </button>
+              <button
                 class="button secondary small"
                 :disabled="busy || switching"
                 @click="openSchemaEditor()"
@@ -827,6 +850,7 @@ async function cellSaved() {
       @choose="workspaceTabs.chooseDatabaseTable(session.database, $event)"
       @create-table="openDiagramTableEditor(null)"
       @edit-table="openDiagramTableEditor"
+      @prepare-reference="(table, column) => openDiagramTableEditor(table, column)"
       @close="schemaDiagramOpen = false"
     />
     <SchemaTableEditor
@@ -834,6 +858,7 @@ async function cellSaved() {
       :provider="session.provider"
       :database="session.database"
       :table="diagramTableEditor"
+      :suggest-unique-column="diagramSuggestedUniqueColumn"
       :apply="db.applyMutation"
       @close="diagramTableEditor = undefined"
       @saved="diagramTableSaved"

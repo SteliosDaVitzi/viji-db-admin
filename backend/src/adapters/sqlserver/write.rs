@@ -1,4 +1,4 @@
-use super::{SqlClient, connect_mode, driver_error, metadata, projection, quote_identifier};
+use super::{SqlClient, connect_mode, driver_error, metadata, projection, quote_identifier, text};
 use crate::{application::*, domain::*};
 use tiberius::Query;
 
@@ -157,6 +157,66 @@ async fn apply(
 ) -> AppResult<u64> {
     if let Some(sql) = statement {
         return counted(client, sql, vec![]).await;
+    }
+    if let Mutation::AlterTableKeys {
+        schema,
+        table,
+        drop_primary_key,
+        drop_unique_keys,
+        add_primary_key,
+        add_unique_keys,
+    } = mutation
+    {
+        let rows = client.query("SELECT t.TABLE_TYPE,c.COLUMN_NAME FROM INFORMATION_SCHEMA.TABLES t JOIN INFORMATION_SCHEMA.COLUMNS c ON c.TABLE_SCHEMA=t.TABLE_SCHEMA AND c.TABLE_NAME=t.TABLE_NAME WHERE t.TABLE_SCHEMA=@P1 AND t.TABLE_NAME=@P2 ORDER BY c.ORDINAL_POSITION", &[&schema.as_str(), &table.as_str()]).await.map_err(write_error)?.into_first_result().await.map_err(write_error)?;
+        if rows.is_empty()
+            || rows
+                .iter()
+                .any(|row| text(row, "TABLE_TYPE").ok() != Some("BASE TABLE".into()))
+        {
+            return Err(invalid(
+                "Choose an accessible base table. Views remain read only.",
+            ));
+        }
+        let available = rows
+            .iter()
+            .map(|row| text(row, "COLUMN_NAME"))
+            .collect::<AppResult<Vec<_>>>()?;
+        let key_rows = client.query("SELECT kc.name AS constraint_name,CASE kc.type WHEN 'PK' THEN 'PRIMARY KEY' ELSE 'UNIQUE' END AS constraint_type FROM sys.key_constraints kc JOIN sys.tables t ON t.object_id=kc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id WHERE s.name=@P1 AND t.name=@P2 AND kc.type IN ('PK','UQ')", &[&schema.as_str(), &table.as_str()]).await.map_err(write_error)?.into_first_result().await.map_err(write_error)?;
+        let current_keys = key_rows
+            .iter()
+            .map(|row| {
+                Ok(KeyConstraint {
+                    name: text(row, "constraint_name")?,
+                    kind: text(row, "constraint_type")?,
+                    columns: vec![],
+                })
+            })
+            .collect::<AppResult<Vec<_>>>()?;
+        super::super::write::validate_key_drops(
+            drop_primary_key.as_deref(),
+            drop_unique_keys,
+            &current_keys,
+        )?;
+        let mut requested = add_primary_key.clone();
+        requested.extend(add_unique_keys.iter().flatten().cloned());
+        super::super::write::validate_key_columns(&requested, &available, "sqlserver")?;
+        let statements = super::super::write::alter_table_key_statements(
+            super::super::write::TableKeyChange {
+                provider: "sqlserver",
+                schema,
+                table,
+                drop_primary_key: drop_primary_key.as_deref(),
+                drop_unique_keys,
+                add_primary_key,
+                add_unique_keys,
+            },
+            128,
+            quote_identifier,
+        )?;
+        for statement in statements {
+            command(client, &statement).await?;
+        }
+        return Ok(0);
     }
     let (schema, table) = match mutation {
         Mutation::Insert { schema, table, .. }

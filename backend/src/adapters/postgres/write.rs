@@ -143,6 +143,70 @@ pub(super) async fn mutate(
                 .map_err(write_error)?
                 .rows_affected()
         }
+        Mutation::AlterTableKeys {
+            schema,
+            table,
+            drop_primary_key,
+            drop_unique_keys,
+            add_primary_key,
+            add_unique_keys,
+        } => {
+            let qualified = format!("{}.{}", identifier(schema)?, identifier(table)?);
+            let lock = format!("LOCK TABLE {qualified} IN ACCESS EXCLUSIVE MODE");
+            sqlx::query(sqlx::AssertSqlSafe(lock.as_str()))
+                .execute(&mut *tx)
+                .await
+                .map_err(write_error)?;
+            let rows = sqlx::query("SELECT c.column_name FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema=c.table_schema AND t.table_name=c.table_name WHERE c.table_schema=$1 AND c.table_name=$2 AND t.table_type='BASE TABLE' ORDER BY c.ordinal_position")
+                .bind(schema).bind(table).fetch_all(&mut *tx).await.map_err(write_error)?;
+            let available = rows
+                .iter()
+                .map(|row| row.get::<String, _>("column_name"))
+                .collect::<Vec<_>>();
+            if available.is_empty() {
+                return Err(invalid(
+                    "Choose an accessible base table. Views remain read only.",
+                ));
+            }
+            let key_rows = sqlx::query("SELECT constraint_name,constraint_type FROM information_schema.table_constraints WHERE table_schema=$1 AND table_name=$2 AND constraint_type IN ('PRIMARY KEY','UNIQUE')")
+                .bind(schema).bind(table).fetch_all(&mut *tx).await.map_err(write_error)?;
+            let current_keys = key_rows
+                .iter()
+                .map(|row| KeyConstraint {
+                    name: row.get("constraint_name"),
+                    kind: row.get("constraint_type"),
+                    columns: vec![],
+                })
+                .collect::<Vec<_>>();
+            super::super::write::validate_key_drops(
+                drop_primary_key.as_deref(),
+                drop_unique_keys,
+                &current_keys,
+            )?;
+            let mut requested = add_primary_key.clone();
+            requested.extend(add_unique_keys.iter().flatten().cloned());
+            super::super::write::validate_key_columns(&requested, &available, "postgres")?;
+            let statements = super::super::write::alter_table_key_statements(
+                super::super::write::TableKeyChange {
+                    provider: "postgres",
+                    schema,
+                    table,
+                    drop_primary_key: drop_primary_key.as_deref(),
+                    drop_unique_keys,
+                    add_primary_key,
+                    add_unique_keys,
+                },
+                63,
+                quote_identifier,
+            )?;
+            for statement in statements {
+                sqlx::query(sqlx::AssertSqlSafe(statement.as_str()))
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(write_error)?;
+            }
+            0
+        }
         Mutation::Insert { schema, table, .. }
         | Mutation::Update { schema, table, .. }
         | Mutation::Delete { schema, table, .. } => {

@@ -4,16 +4,24 @@ import type { Mutation, TableInfo } from '../../shared/database'
 
 interface NewField {
   name: string
+  previousName?: string
   dataType: string
   nullable: boolean
   primaryKey: boolean
   unique: boolean
 }
 
+interface UniqueKeyDraft {
+  id: string
+  name: string | null
+  columns: string[]
+}
+
 const props = defineProps<{
   provider: string
   database: string
   table: TableInfo | null
+  suggestUniqueColumn?: string
   apply: (mutation: Mutation) => Promise<{ affectedRows: number }>
 }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
@@ -55,6 +63,44 @@ const fields = ref<NewField[]>(
         },
       ],
 )
+const knownColumns = ref([...(props.table?.columns ?? [])])
+const primaryFields = ref([
+  ...(props.table?.keyConstraints?.find((key) => key.kind === 'PRIMARY KEY')?.columns ??
+    props.table?.primaryKeys ??
+    []),
+])
+let uniqueDraftId = 0
+const uniqueKeys = ref<UniqueKeyDraft[]>(
+  (props.table?.keyConstraints ?? [])
+    .filter((key) => key.kind === 'UNIQUE')
+    .map((key) => ({ id: `existing-${key.name}`, name: key.name, columns: [...key.columns] })),
+)
+if (
+  props.suggestUniqueColumn &&
+  props.table?.columns.includes(props.suggestUniqueColumn) &&
+  !uniqueKeys.value.some(
+    (key) => key.columns.length === 1 && key.columns[0] === props.suggestUniqueColumn,
+  )
+) {
+  uniqueKeys.value.push({
+    id: 'suggested-reference-key',
+    name: null,
+    columns: [props.suggestUniqueColumn],
+  })
+}
+const keyMetadataAvailable = computed(
+  () =>
+    !!props.table &&
+    Array.isArray(props.table.keyConstraints) &&
+    (!props.table.primaryKeys?.length ||
+      props.table.keyConstraints.some((key) => key.kind === 'PRIMARY KEY')),
+)
+const keyColumns = computed(() => [
+  ...new Set([
+    ...knownColumns.value,
+    ...fields.value.map((field) => field.name.trim()).filter((name) => validIdentifier(name)),
+  ]),
+])
 const saving = ref(false)
 const error = ref('')
 useActionFeedback(error)
@@ -62,7 +108,7 @@ const target = computed(
   () =>
     `${quoteIdentifier(schema.value, props.provider)}.${quoteIdentifier(tableName.value, props.provider)}`,
 )
-const canAddPrimaryKey = computed(() => !props.table?.primaryKeys?.length)
+const canAddPrimaryKey = computed(() => !props.table)
 
 function validIdentifier(value: string) {
   const trimmed = value.trim()
@@ -136,30 +182,98 @@ function validDataType(value: string) {
   return !!match && builtInTypes.has(match[1]!.toLowerCase().replace(/\s+/g, ' '))
 }
 const fieldsValid = computed(() => {
-  if (!fields.value.length || fields.value.length > 50) return false
+  if ((!fields.value.length && !props.table) || fields.value.length > 50) return false
   const names = fields.value.map((field) => field.name.trim().toLowerCase())
   if (new Set(names).size !== names.length) return false
+  if (names.some((name) => knownColumns.value.some((existing) => existing.toLowerCase() === name)))
+    return false
+  if (!props.table && fields.value.filter((field) => field.primaryKey).length > 1) return false
   if (
-    names.some((name) => props.table?.columns.some((existing) => existing.toLowerCase() === name))
+    props.table &&
+    primaryFields.value.length + fields.value.filter((field) => field.primaryKey).length > 32
   )
     return false
-  if (fields.value.filter((field) => field.primaryKey).length > 1) return false
+  if (props.table && uniqueKeys.value.some((key) => key.columns.length === 0)) return false
+  if (props.table) {
+    const available = new Set([
+      ...knownColumns.value,
+      ...fields.value.map((field) => field.name.trim()).filter(Boolean),
+    ])
+    if (
+      primaryFields.value.some((column) => !available.has(column)) ||
+      uniqueKeys.value.some((key) => key.columns.some((column) => !available.has(column)))
+    )
+      return false
+  }
   return fields.value.every(
     (field) =>
       validIdentifier(field.name) && validDataType(field.dataType) && field.dataType.length <= 128,
   )
 })
+function sameKeyColumns(left: string[], right: string[]) {
+  if (left.length !== right.length) return false
+  const normalize = (column: string) =>
+    props.provider === 'postgres' ? column : column.toLocaleLowerCase()
+  return left.every((column, index) => normalize(column) === normalize(right[index]!))
+}
+function sameUniqueColumns(left: string[], right: string[]) {
+  return sameKeyColumns([...left].sort(), [...right].sort())
+}
+function keyMutation(): Mutation | null {
+  if (!props.table || !keyMetadataAvailable.value) return null
+  const existingPrimary = props.table.keyConstraints!.find((key) => key.kind === 'PRIMARY KEY')
+  const desiredPrimary = [
+    ...primaryFields.value,
+    ...fields.value.filter((field) => field.primaryKey).map((field) => field.name.trim()),
+  ]
+  const primaryUnchanged =
+    (!existingPrimary && desiredPrimary.length === 0) ||
+    (!!existingPrimary && sameKeyColumns(existingPrimary.columns, desiredPrimary))
+  const unmatchedUnique = props.table.keyConstraints!.filter((key) => key.kind === 'UNIQUE')
+  const desiredUnique = [
+    ...uniqueKeys.value.map((key) => key.columns),
+    ...fields.value.filter((field) => field.unique).map((field) => [field.name.trim()]),
+  ].filter((columns) => columns.length > 0)
+  const addUniqueKeys: string[][] = []
+  for (const desired of desiredUnique) {
+    const index = unmatchedUnique.findIndex((current) =>
+      sameUniqueColumns(current.columns, desired),
+    )
+    if (index >= 0) unmatchedUnique.splice(index, 1)
+    else addUniqueKeys.push(desired)
+  }
+  const dropPrimaryKey = !primaryUnchanged ? (existingPrimary?.name ?? null) : null
+  const addPrimaryKey = !primaryUnchanged ? desiredPrimary : []
+  if (!dropPrimaryKey && !addPrimaryKey.length && !unmatchedUnique.length && !addUniqueKeys.length)
+    return null
+  return {
+    action: 'alterTableKeys',
+    schema: props.table.schema,
+    table: props.table.name,
+    dropPrimaryKey,
+    dropUniqueKeys: unmatchedUnique.map((key) => key.name),
+    addPrimaryKey,
+    addUniqueKeys,
+  }
+}
+const pendingKeyMutation = computed(() => keyMutation())
 const canSave = computed(
   () =>
     !saving.value &&
     fieldsValid.value &&
-    (props.table !== null || (validIdentifier(schema.value) && validIdentifier(tableName.value))),
+    (props.table !== null
+      ? fields.value.length > 0 || !!pendingKeyMutation.value
+      : fields.value.length > 0 &&
+        validIdentifier(schema.value) &&
+        validIdentifier(tableName.value)),
 )
 
 function addField() {
   if (fields.value.length >= 50) return
+  const name = `new_field_${fields.value.length + 1}`
   fields.value.push({
-    name: `new_field_${fields.value.length + 1}`,
+    name,
+    previousName: name,
     dataType: 'varchar(255)',
     nullable: true,
     primaryKey: false,
@@ -168,11 +282,28 @@ function addField() {
 }
 function removeField(index: number) {
   if (saving.value) return
-  fields.value.splice(index, 1)
+  const [removed] = fields.value.splice(index, 1)
+  if (props.table && removed) {
+    const name = removed.name.trim()
+    primaryFields.value = primaryFields.value.filter((column) => column !== name)
+    uniqueKeys.value = uniqueKeys.value
+      .map((key) => ({
+        ...key,
+        columns: key.columns.filter((column) => column !== name),
+      }))
+      .filter((key) => key.columns.length > 0)
+  }
 }
 function columnDefinition(field: NewField) {
   const nullability = field.primaryKey ? ' NOT NULL' : field.nullable ? ' NULL' : ' NOT NULL'
-  return `${quoteIdentifier(field.name.trim(), props.provider)} ${field.dataType.trim()}${nullability}${field.primaryKey ? ' PRIMARY KEY' : field.unique ? ' UNIQUE' : ''}`
+  const inlineKey = props.table
+    ? ''
+    : field.primaryKey
+      ? ' PRIMARY KEY'
+      : field.unique
+        ? ' UNIQUE'
+        : ''
+  return `${quoteIdentifier(field.name.trim(), props.provider)} ${field.dataType.trim()}${nullability}${inlineKey}`
 }
 function statement() {
   if (!props.table) {
@@ -183,12 +314,56 @@ function statement() {
     return `ALTER TABLE ${target.value}\n  ADD ${definitions.join(',\n  ')};`
   return `ALTER TABLE ${target.value}\n  ${definitions.map((definition) => `ADD COLUMN ${definition}`).join(',\n  ')};`
 }
+function addUniqueKey() {
+  if (saving.value) return
+  uniqueKeys.value.push({ id: `new-${++uniqueDraftId}`, name: null, columns: [] })
+}
+function setUniqueColumn(key: UniqueKeyDraft, column: string, checked: boolean) {
+  if (checked && !key.columns.includes(column)) key.columns.push(column)
+  else if (!checked) key.columns = key.columns.filter((name) => name !== column)
+}
+function setPrimaryColumn(column: string, checked: boolean) {
+  if (checked && !primaryFields.value.includes(column)) primaryFields.value.push(column)
+  else if (!checked) primaryFields.value = primaryFields.value.filter((name) => name !== column)
+}
+function renameField(field: NewField) {
+  const previous = field.previousName
+  const next = field.name.trim()
+  if (!previous || previous === next) return
+  primaryFields.value = primaryFields.value.map((column) => (column === previous ? next : column))
+  for (const key of uniqueKeys.value)
+    key.columns = key.columns.map((column) => (column === previous ? next : column))
+  field.previousName = next
+}
 async function save() {
   if (!canSave.value) return
   saving.value = true
   error.value = ''
   try {
-    await props.apply({ action: 'execute', sql: statement() })
+    if (!props.table) {
+      await props.apply({ action: 'execute', sql: statement() })
+    } else {
+      if (fields.value.length) {
+        await props.apply({ action: 'execute', sql: statement() })
+        const added = [...fields.value]
+        knownColumns.value.push(...added.map((field) => field.name.trim()))
+        primaryFields.value.push(
+          ...added.filter((field) => field.primaryKey).map((field) => field.name.trim()),
+        )
+        uniqueKeys.value.push(
+          ...added
+            .filter((field) => field.unique)
+            .map((field, index) => ({
+              id: `added-${++uniqueDraftId}-${index}`,
+              name: null,
+              columns: [field.name.trim()],
+            })),
+        )
+        fields.value = []
+      }
+      const change = keyMutation()
+      if (change) await props.apply(change)
+    }
     emit('saved')
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : 'Could not apply the table changes.'
@@ -223,6 +398,11 @@ onMounted(() => dialog.value?.showModal())
       <p class="muted">
         {{ database }}<template v-if="table"> / {{ table.schema }}.{{ table.name }}</template>
       </p>
+      <p v-if="suggestUniqueColumn" class="muted">
+        A unique key for {{ suggestUniqueColumn }} is selected below so other tables can reference
+        it. Review and apply this key, then return to the relationship. Existing values must be
+        unique.
+      </p>
       <template v-if="!table">
         <label
           >Schema<input
@@ -243,11 +423,64 @@ onMounted(() => dialog.value?.showModal())
       </template>
       <section v-else class="schema-existing-fields" aria-label="Existing fields">
         <h3>Existing fields</h3>
-        <div v-for="column in table.columns" :key="column" class="schema-existing-field">
-          <AppIcon :name="table.primaryKeys?.includes(column) ? 'key' : 'table'" :size="14" />
+        <div v-for="column in knownColumns" :key="column" class="schema-existing-field">
+          <AppIcon :name="primaryFields.includes(column) ? 'key' : 'table'" :size="14" />
           <span>{{ column }}</span>
-          <small v-if="table.primaryKeys?.includes(column)">PK</small>
-          <small v-else-if="table.foreignKeys?.some((key) => key.column === column)">FK</small>
+          <label v-if="keyMetadataAvailable" class="schema-key-check">
+            <input
+              type="checkbox"
+              :checked="primaryFields.includes(column)"
+              :disabled="saving"
+              @change="setPrimaryColumn(column, ($event.target as HTMLInputElement).checked)"
+            />
+            PK
+          </label>
+          <small v-else-if="table.primaryKeys?.includes(column)">PK</small>
+          <small v-if="table.foreignKeys?.some((key) => key.column === column)">FK</small>
+        </div>
+        <p v-if="!keyMetadataAvailable" class="muted">
+          Key details are unavailable from this backend version. Refresh the explorer to edit keys.
+        </p>
+      </section>
+      <section v-if="table" class="schema-key-editor" aria-label="Unique key constraints">
+        <div class="schema-fields-heading">
+          <h3>Unique keys</h3>
+          <button
+            type="button"
+            class="button secondary small"
+            :disabled="saving || !keyMetadataAvailable || uniqueKeys.length >= 32"
+            @click="addUniqueKey"
+          >
+            <AppIcon name="plus" :size="15" /> Add unique key
+          </button>
+        </div>
+        <p class="muted">
+          Select one or more fields for each unique key. Remove a key with the minus button.
+        </p>
+        <p v-if="!uniqueKeys.length" class="muted">No unique keys defined.</p>
+        <div v-for="key in uniqueKeys" :key="key.id" class="schema-unique-key">
+          <small class="schema-unique-key-name">{{ key.name ?? 'New unique key' }}</small>
+          <div class="schema-unique-key-fields">
+            <label v-for="column in keyColumns" :key="column" class="schema-key-check">
+              <input
+                type="checkbox"
+                :checked="key.columns.includes(column)"
+                :disabled="saving || !keyMetadataAvailable"
+                @change="setUniqueColumn(key, column, ($event.target as HTMLInputElement).checked)"
+              />
+              {{ column }}
+            </label>
+          </div>
+          <button
+            type="button"
+            class="icon-button schema-field-remove"
+            :aria-label="`Remove unique key ${key.id}`"
+            title="Remove unique key"
+            :disabled="saving || !keyMetadataAvailable"
+            @click="uniqueKeys = uniqueKeys.filter((item) => item.id !== key.id)"
+          >
+            <AppIcon name="minus" :size="16" />
+          </button>
         </div>
       </section>
       <section class="schema-new-fields" aria-label="Fields to add">
@@ -274,6 +507,7 @@ onMounted(() => dialog.value?.showModal())
           <label
             >Field name<input
               v-model="field.name"
+              @input="renameField(field)"
               required
               :maxlength="options.nameLimit"
               :disabled="saving"
@@ -299,17 +533,19 @@ onMounted(() => dialog.value?.showModal())
             />
             Nullable
           </label>
-          <label v-if="canAddPrimaryKey" class="schema-field-check">
+          <label v-if="canAddPrimaryKey || table" class="schema-field-check">
             <input
               v-model="field.primaryKey"
               type="checkbox"
               :disabled="
-                saving || fields.some((item, itemIndex) => itemIndex !== index && item.primaryKey)
+                saving ||
+                (table && !keyMetadataAvailable) ||
+                (!table && fields.some((item, itemIndex) => itemIndex !== index && item.primaryKey))
               "
             />
             Primary key
           </label>
-          <label class="schema-field-check">
+          <label v-if="!table" class="schema-field-check">
             <input v-model="field.unique" type="checkbox" :disabled="saving || field.primaryKey" />
             Unique
           </label>

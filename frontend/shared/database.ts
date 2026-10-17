@@ -35,7 +35,14 @@ export interface TableInfo {
   kind: string
   columns: string[]
   primaryKeys?: string[]
+  keyConstraints?: KeyConstraintInfo[]
+  referenceableColumns?: string[]
   foreignKeys?: ForeignKeyInfo[]
+}
+export interface KeyConstraintInfo {
+  name: string
+  kind: 'PRIMARY KEY' | 'UNIQUE'
+  columns: string[]
 }
 export interface ForeignKeyInfo {
   name: string
@@ -81,6 +88,15 @@ export type Mutation =
   | { action: 'delete'; schema: string; table: string; original: Record<string, unknown> }
   | { action: 'createDatabase' | 'dropDatabase'; name: string }
   | { action: 'dropTable'; schema: string; table: string }
+  | {
+      action: 'alterTableKeys'
+      schema: string
+      table: string
+      dropPrimaryKey: string | null
+      dropUniqueKeys: string[]
+      addPrimaryKey: string[]
+      addUniqueKeys: string[][]
+    }
   | { action: 'execute'; sql: string }
 
 export interface DatabaseSettings {

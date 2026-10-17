@@ -164,7 +164,8 @@
   line-height: 1.55;
 }
 .schema-existing-fields,
-.schema-new-fields {
+.schema-new-fields,
+.schema-key-editor {
   display: grid;
   gap: 10px;
   padding: 14px;
@@ -196,6 +197,41 @@
   color: var(--accent);
   font-family: var(--font-ui);
 }
+.schema-key-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--secondary);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.schema-key-check input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.schema-unique-key {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--raised);
+}
+.schema-unique-key-name {
+  max-width: 190px;
+  overflow: hidden;
+  color: var(--secondary);
+  font-family: var(--font-code);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+}
+.schema-unique-key-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
 .schema-fields-heading {
   display: flex;
   align-items: center;
@@ -204,7 +240,7 @@
 }
 .schema-new-field {
   display: grid;
-  grid-template-columns: minmax(120px, 1.2fr) minmax(130px, 1.2fr) auto auto 32px;
+  grid-template-columns: minmax(120px, 1.2fr) minmax(130px, 1.2fr) auto auto auto 32px;
   align-items: end;
   gap: 10px;
   padding-top: 10px;
@@ -2927,6 +2963,7 @@ textarea:focus-visible {
   backdrop-filter: blur(4px);
 }
 .schema-diagram-shell {
+  position: relative;
   min-width: 0;
   min-height: 0;
   flex: 1;
@@ -2992,6 +3029,7 @@ textarea:focus-visible {
 }
 .schema-diagram-actions {
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 12px;
   flex: 1;
 }
@@ -3069,6 +3107,9 @@ textarea:focus-visible {
   color: var(--amber);
 }
 .schema-diagram-legend > span:nth-child(2) svg {
+  color: #8fc9a6;
+}
+.schema-diagram-legend > span:nth-child(3) svg {
   color: var(--accent);
 }
 .diagram-edge-key i {
@@ -3088,16 +3129,27 @@ textarea:focus-visible {
   white-space: normal !important;
 }
 .diagram-relationship-editor {
+  position: absolute;
+  z-index: 20;
+  right: 16px;
+  bottom: 46px;
+  left: 16px;
+  max-height: 50%;
+  overflow-y: auto;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   padding: 10px 20px;
   color: var(--text);
-  background: var(--accent-soft);
-  border-bottom: 1px solid var(--raised);
+  background: var(--sidebar);
+  border: 1px solid var(--raised);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px #0005;
 }
 .diagram-relationship-copy {
+  flex: 1 0 100%;
   min-width: 0;
   display: flex;
   flex-wrap: wrap;
@@ -3112,10 +3164,27 @@ textarea:focus-visible {
   flex-basis: 100%;
   color: var(--danger, #e58c87);
 }
+.diagram-relationship-copy .diagram-relationship-notice {
+  flex-basis: 100%;
+  color: var(--accent);
+}
 .diagram-relationship-actions {
   display: flex;
   flex: 0 0 auto;
   gap: 8px;
+  flex-wrap: wrap;
+}
+.diagram-relationship-recovery {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  gap: 8px 12px;
+  color: var(--secondary);
+  font-size: var(--text-sm);
+}
+.diagram-relationship-recovery > span {
+  flex: 1 1 320px;
 }
 .diagram-relationship-fields {
   min-width: 0;
@@ -3168,6 +3237,7 @@ textarea:focus-visible {
   inset: 0 auto auto 0;
   transform-origin: 0 0;
   pointer-events: none;
+  overflow: visible;
 }
 .schema-diagram-edges {
   position: absolute;
@@ -3343,6 +3413,33 @@ textarea:focus-visible {
 .schema-diagram-column-linkable.is-link-source {
   color: var(--text);
   background: var(--accent-soft);
+}
+.schema-diagram-column.is-reference-ready {
+  background: #8fc9a612;
+}
+.schema-diagram-column.is-reference-ready .schema-column-handle.input {
+  opacity: 1;
+  box-shadow: 0 0 0 3px #8fc9a622;
+}
+.schema-diagram-column.is-reference-hover,
+.schema-diagram-column.is-pending-target {
+  background: #8fc9a62a;
+  box-shadow: inset 3px 0 #8fc9a6;
+}
+.schema-diagram-column.is-pending-source {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 var(--accent);
+}
+.schema-diagram-column.is-reference-needs-key {
+  background: #d9b77e20;
+  box-shadow: inset 3px 0 var(--amber);
+}
+.schema-column-handle.input.needs-key {
+  background: var(--amber);
+}
+.schema-column-badge.unique {
+  color: #8fc9a6;
+  background: #8fc9a619;
 }
 .schema-column-handle {
   position: absolute;
@@ -3584,6 +3681,10 @@ textarea:focus-visible {
   .schema-diagram-actions {
     gap: 7px;
   }
+  .schema-diagram-search {
+    order: 2;
+    flex-basis: 100%;
+  }
   .schema-diagram-create {
     width: 30px;
     min-width: 30px;
@@ -3622,6 +3723,11 @@ textarea:focus-visible {
   }
   .diagram-relationship-actions {
     justify-content: flex-end;
+  }
+  .diagram-relationship-copy,
+  .diagram-relationship-fields,
+  .diagram-relationship-recovery {
+    flex: 0 0 auto;
   }
   .schema-new-field {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 30px;
