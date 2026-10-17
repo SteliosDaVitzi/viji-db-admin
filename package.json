@@ -1,5 +1,5 @@
 {
-  "name": "web-db",
+  "name": "dbsaur",
   "private": true,
   "scripts": {
     "dev": "node scripts/dev.mjs",

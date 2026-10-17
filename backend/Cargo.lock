@@ -392,6 +392,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "dbsaur"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "async-trait",
+ "axum",
+ "http-body-util",
+ "serde",
+ "serde_json",
+ "sqlparser",
+ "sqlx",
+ "tiberius",
+ "tokio",
+ "tokio-util",
+ "tower",
+ "uuid",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2148,25 +2167,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ef64dbcc55df09c7e5a46182d181c2cfa3e925f3da937ea764728b4bbb9dcbf"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "webdb"
-version = "0.1.0"
-dependencies = [
- "aes-gcm",
- "async-trait",
- "axum",
- "http-body-util",
- "serde",
- "serde_json",
- "sqlparser",
- "sqlx",
- "tiberius",
- "tokio",
- "tokio-util",
- "tower",
- "uuid",
 ]
 
 [[package]]

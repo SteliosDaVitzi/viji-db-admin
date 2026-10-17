@@ -1,11 +1,11 @@
-use sqlx::{
-    Connection, Executor, PgConnection,
-    postgres::{PgConnectOptions, PgSslMode},
-};
-use webdb::{
+use dbsaur::{
     adapters::postgres::{PostgresAdapter, quote_identifier},
     application::DatabaseAdapter,
     domain::{ConnectionInput, DatabaseSettings, UpdateDatabaseSettings},
+};
+use sqlx::{
+    Connection, Executor, PgConnection,
+    postgres::{PgConnectOptions, PgSslMode},
 };
 
 fn change(database: &str, changes: serde_json::Value) -> UpdateDatabaseSettings {

@@ -64,7 +64,7 @@ pub(super) async fn update(
             "Only the database owner or an authorized administrator can save settings.",
         ));
     }
-    // Serialize WebDB saves for this database, and compare the saved overrides
+    // Serialize DBsaur saves for this database, and compare the saved overrides
     // rather than session values (which may include role-specific overrides).
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended(current_database(), 68329))")
         .execute(&mut *tx)

@@ -43,7 +43,7 @@ onMounted(() => {
 
 <template>
   <footer class="app-footer">
-    <span>WebDB by <a href="https://vijitek.com">Vijitek</a></span>
+    <span>DBsaur by <a href="https://vijitek.com">Vijitek</a></span>
     <nav aria-label="Legal and privacy">
       <NuxtLink to="/privacy">Privacy policy</NuxtLink>
       <NuxtLink to="/terms">Terms of use</NuxtLink>
@@ -58,9 +58,9 @@ onMounted(() => {
     @close="trigger?.focus()"
   >
     <span class="privacy-emblem"><AppIcon name="lock" :size="24" /></span>
-    <h2 id="privacy-title">Your privacy in WebDB</h2>
+    <h2 id="privacy-title">Your privacy in DBsaur</h2>
     <p id="privacy-description">
-      WebDB connects through its backend to the database you choose. Connection details, queries,
+      DBsaur connects through its backend to the database you choose. Connection details, queries,
       and results pass through that server.
     </p>
     <h3>Necessary storage only</h3>

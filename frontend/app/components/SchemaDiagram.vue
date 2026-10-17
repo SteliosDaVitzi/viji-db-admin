@@ -945,7 +945,7 @@ watch(
           v-if="relationshipMetadataMissing"
           class="diagram-legend-hint relationship-metadata-warning"
         >
-          Relationship metadata is unavailable. Restart WebDB, reconnect, then reopen the diagram.
+          Relationship metadata is unavailable. Restart DBsaur, reconnect, then reopen the diagram.
         </span>
         <span v-else class="diagram-legend-hint">
           {{

@@ -384,10 +384,10 @@ async function cellSaved() {
   <div class="workspace" @contextmenu.prevent="workspaceContext">
     <header class="app-header">
       <div class="header-branding">
-        <a href="/" class="brand" aria-label="WebDB home"
-          ><span class="brand-icon"><AppIcon name="database" :size="20" /></span>web<span
+        <a href="/" class="brand" aria-label="DBsaur home"
+          ><span class="brand-icon"><AppIcon name="database" :size="20" /></span>DB<span
             class="brand-db"
-            >db</span
+            >saur</span
           ></a
         >
         <a class="brand-attribution" href="https://vijitek.com">

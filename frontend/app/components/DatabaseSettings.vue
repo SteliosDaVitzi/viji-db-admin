@@ -184,7 +184,7 @@ function failure(cause: unknown) {
   const problem = cause as { statusCode?: number; status?: number; data?: { message?: string } }
   const status = problem.statusCode || problem.status
   if (status === 404 || status === 405)
-    return 'The running backend needs an update. Restart WebDB, then reconnect to configure settings.'
+    return 'The running backend needs an update. Restart DBsaur, then reconnect to configure settings.'
   if (status === 401) return 'Your session ended. Reconnect to your database to continue.'
   return (
     problem.data?.message ||
@@ -202,7 +202,7 @@ async function load() {
       throw new Error('Database changed')
     if (typeof settings.canEdit !== 'boolean') {
       error.value =
-        'The running backend needs an update. Restart WebDB, then reconnect to configure settings.'
+        'The running backend needs an update. Restart DBsaur, then reconnect to configure settings.'
       return
     }
     result.value = settings

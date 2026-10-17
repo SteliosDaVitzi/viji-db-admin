@@ -1,4 +1,4 @@
-# Contributing to WebDB
+# Contributing to DBsaur
 
 Bug reports, documentation improvements, and focused pull requests are welcome.
 For substantial changes, open an issue describing the problem and proposed behavior first.

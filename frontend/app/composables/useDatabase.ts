@@ -50,14 +50,14 @@ export function useDatabase() {
       return 'Your connection session expired or the backend restarted. Reconnect to continue.'
     }
     if (operation === 'save' && status === 404) {
-      return 'The running backend does not support editing yet. Restart the WebDB backend, then reconnect and try again.'
+      return 'The running backend does not support editing yet. Restart the DBsaur backend, then reconnect and try again.'
     }
     if (status === 413)
       return 'This request is too large. Use a database client to edit larger records.'
     return (
       failure.data?.message ||
       (status === 403
-        ? 'The request was rejected. Open WebDB at its original address and try again.'
+        ? 'The request was rejected. Open DBsaur at its original address and try again.'
         : status && status < 500
           ? 'The request was rejected. Refresh the table and check the entered value.'
           : 'Could not reach the database service. Check that the backend is running and try again.')

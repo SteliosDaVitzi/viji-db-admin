@@ -1,12 +1,16 @@
 [package]
-name = "webdb"
+name = "dbsaur"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT"
-description = "A local database workspace for PostgreSQL, MySQL, MariaDB, and SQL Server"
+description = "DBsaur, a local database workspace for PostgreSQL, MySQL, MariaDB, and SQL Server"
 repository = "https://github.com/SteliosDaVitzi/web-db-tool"
 publish = false
+
+[[bin]]
+name = "dbsaur"
+path = "src/main.rs"
 
 [dependencies]
 axum = "0.8.9"

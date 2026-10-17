@@ -7,19 +7,19 @@ const document = computed(() => {
     throw createError({ statusCode: 404, statusMessage: 'Page not found' })
   return legalDocuments[key]
 })
-useHead(() => ({ title: `${document.value.title} — WebDB` }))
+useHead(() => ({ title: `${document.value.title} — DBsaur` }))
 </script>
 
 <template>
   <div class="legal-page">
     <header class="app-header">
-      <NuxtLink to="/" class="brand" aria-label="WebDB home"
-        ><span class="brand-icon"><AppIcon name="database" :size="20" /></span>web<span
+      <NuxtLink to="/" class="brand" aria-label="DBsaur home"
+        ><span class="brand-icon"><AppIcon name="database" :size="20" /></span>DB<span
           class="brand-db"
-          >db</span
+          >saur</span
         ></NuxtLink
       >
-      <NuxtLink to="/" class="button secondary small">Back to WebDB</NuxtLink>
+      <NuxtLink to="/" class="button secondary small">Back to DBsaur</NuxtLink>
     </header>
     <main class="legal-content">
       <h1>{{ document.title }}</h1>

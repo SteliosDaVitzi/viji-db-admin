@@ -110,7 +110,7 @@ pub(super) async fn connect(input: &ConnectionInput) -> AppResult<PgConnection> 
         } else {
             PgSslMode::Disable
         })
-        .application_name("webdb")
+        .application_name("dbsaur")
         .disable_statement_logging();
     if let Some(pem) = &input.tls_ca {
         options = options.ssl_root_cert_from_pem(pem.as_bytes().to_vec());

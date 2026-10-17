@@ -4,7 +4,7 @@ Reference: the three supplied Beekeeper Studio screenshots (connection form, exp
 
 ## Assessment
 
-| Reference feature | WebDB status and decision |
+| Reference feature | DBsaur status and decision |
 | --- | --- |
 | Database type, host, port, username, password | Already supported for PostgreSQL, MySQL, MariaDB, and SQL Server. Provider selection changes the default port. Added password visibility. |
 | Default database and connection mode | Single database and instance discovery already exist. A URL with no database selects instance discovery. Unix sockets and SQL Server named instances need separate adapter support; do not imply support through a generic dropdown. |

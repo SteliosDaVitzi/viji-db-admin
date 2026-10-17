@@ -70,7 +70,7 @@ test('node-forge rejects the nested DigestAlgorithm signature forgery', () => {
 })
 
 test('node-forge continues to verify a valid RSA SHA-256 signature', () => {
-  const message = 'web-db dependency regression check'
+  const message = 'dbsaur dependency regression check'
   const { privateKey, publicKey } = generateKeyPairSync('rsa', {
     modulusLength: 2048,
     publicExponent: 65537,

@@ -1,11 +1,11 @@
-use sqlx::{
-    Connection, Executor, PgConnection,
-    postgres::{PgConnectOptions, PgSslMode},
-};
-use webdb::{
+use dbsaur::{
     adapters::postgres::{PostgresAdapter, quote_identifier},
     application::DatabaseAdapter,
     domain::{BrowseQuery, ConnectionInput, SqlQuery},
+};
+use sqlx::{
+    Connection, Executor, PgConnection,
+    postgres::{PgConnectOptions, PgSslMode},
 };
 
 // Creates and deletes only a randomly named schema in an explicitly supplied test DB.

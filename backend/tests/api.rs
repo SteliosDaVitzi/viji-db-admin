@@ -7,7 +7,7 @@ use tower::ServiceExt;
 
 #[tokio::test]
 async fn session_browsing_validation_and_disconnect() {
-    let app = webdb::router(false);
+    let app = dbsaur::router(false);
     let unauthorized = app
         .clone()
         .oneshot(Request::get("/api/tables").body(Body::empty()).unwrap())
@@ -285,7 +285,7 @@ async fn session_browsing_validation_and_disconnect() {
 
 #[tokio::test]
 async fn registry_advertises_real_database_providers() {
-    let response = webdb::router(false)
+    let response = dbsaur::router(false)
         .oneshot(Request::get("/api/providers").body(Body::empty()).unwrap())
         .await
         .unwrap();

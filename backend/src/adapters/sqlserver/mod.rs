@@ -23,7 +23,7 @@ async fn connect_mode(input: &ConnectionInput, read_only: bool) -> AppResult<Sql
     config.port(input.port);
     config.database(&input.database);
     config.authentication(AuthMethod::sql_server(&input.username, &input.password));
-    config.application_name("webdb");
+    config.application_name("dbsaur");
     config.encryption(if input.ssl {
         EncryptionLevel::Required
     } else {

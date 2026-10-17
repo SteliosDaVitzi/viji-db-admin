@@ -5,7 +5,7 @@
 Do not disclose vulnerabilities, credentials, private connection strings, or real
 database records in public issues. Use GitHub's **Report a vulnerability** option
 on the repository Security tab when enabled. Otherwise email
-**steliosvitzi@gmail.com** with the subject **WebDB security report**.
+**steliosvitzi@gmail.com** with the subject **DBsaur security report**.
 
 Include the affected commit/version, provider, deployment method, impact, and a
 minimal reproduction with synthetic data. Maintainers review reports as time
@@ -15,7 +15,7 @@ public disclosure while a report is investigated.
 ## Supported versions and threat model
 
 Security fixes target the latest default-branch code. No older release branch has
-a promised support window. WebDB is early-development software for a trusted,
+a promised support window. DBsaur is early-development software for a trusted,
 single-user workstation, with no built-in multi-user authentication or per-user
 authorization. Session cookies are not an independent login system.
 

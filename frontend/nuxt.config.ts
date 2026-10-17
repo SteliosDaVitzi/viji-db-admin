@@ -18,7 +18,7 @@ export default defineNuxtConfig({
   },
   app: {
     head: {
-      title: 'WebDB — a quiet place for your data',
+      title: 'DBsaur — a quiet place for your data',
       meta: [
         {
           name: 'description',

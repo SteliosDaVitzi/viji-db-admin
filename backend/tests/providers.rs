@@ -6,14 +6,14 @@ mod providers {
 }
 
 async fn browse(
-    adapter: &dyn webdb::application::DatabaseAdapter,
+    adapter: &dyn dbsaur::application::DatabaseAdapter,
     variable: &str,
     provider: &str,
     sql: &str,
 ) {
     let json =
         std::env::var(variable).expect("Set an explicit disposable database connection JSON");
-    let input: webdb::domain::ConnectionInput =
+    let input: dbsaur::domain::ConnectionInput =
         serde_json::from_str(&json).expect("Valid ConnectionInput JSON");
     assert_eq!(input.provider, provider);
     assert!(
@@ -26,7 +26,7 @@ async fn browse(
     let page = adapter
         .query(
             &input,
-            &webdb::domain::SqlQuery {
+            &dbsaur::domain::SqlQuery {
                 sql: sql.into(),
                 page: Some(0),
                 page_size: Some(1),
@@ -48,7 +48,7 @@ async fn browse(
             adapter
                 .query(
                     &input,
-                    &webdb::domain::SqlQuery {
+                    &dbsaur::domain::SqlQuery {
                         sql: sql.into(),
                         page: None,
                         page_size: None
@@ -61,7 +61,7 @@ async fn browse(
     let result = adapter
         .mutate(
             &input,
-            &webdb::domain::Mutation::Execute {
+            &dbsaur::domain::Mutation::Execute {
                 sql: "COMMIT".into(),
             },
         )
@@ -69,8 +69,8 @@ async fn browse(
     assert!(result.is_err());
 }
 
+use dbsaur::{application::DatabaseAdapter, domain::*};
 use std::collections::BTreeMap;
-use webdb::{application::DatabaseAdapter, domain::*};
 fn values(items: &[(&str, Option<&str>)]) -> BTreeMap<String, Option<String>> {
     items
         .iter()
@@ -94,9 +94,9 @@ async fn writes(adapter: &dyn DatabaseAdapter, variable: &str, provider: &str) {
         input.database.clone()
     };
     let quote: fn(&str) -> String = if provider == "sqlserver" {
-        webdb::adapters::sqlserver::quote_identifier
+        dbsaur::adapters::sqlserver::quote_identifier
     } else {
-        webdb::adapters::mysql::quote_identifier
+        dbsaur::adapters::mysql::quote_identifier
     };
     let name = format!(
         "webdb_write_{}{}",

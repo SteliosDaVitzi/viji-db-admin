@@ -1,4 +1,4 @@
-# WebDB
+# DBsaur
 
 A local, single-user database administration tool. **Early development:** APIs and
 stored formats may change, and no stable release or support schedule is promised.
@@ -165,7 +165,7 @@ export WEBDB_TEST_CONNECTION_JSON='{"provider":"postgres","host":"127.0.0.1","po
 cargo test --manifest-path backend/Cargo.toml -- --include-ignored
 ```
 
-PowerShell uses `$env:WEBDB_TEST_CONNECTION_JSON='...'` instead of `export`. WebDB does not provision PostgreSQL or seed a database.
+PowerShell uses `$env:WEBDB_TEST_CONNECTION_JSON='...'` instead of `export`. DBsaur does not provision PostgreSQL or seed a database.
 
 ## Docker
 
@@ -197,7 +197,7 @@ All scripts support `--help`. `migrate` reports that the SQLite connection-store
 
 ## Security and scope
 
-WebDB is a local, single-user tool. The browser sends credentials only to the local API through the Nuxt proxy; no third-party services, font CDNs, analytics, or persistent browser credential storage are used. Password fields clear on submission. Unless you opt into saving a connection, credentials stay in bounded server memory, expire after eight hours, and are removed on disconnect or process exit; a periodic cleanup removes expired entries within a minute. Sessions use random opaque IDs in `HttpOnly`, `SameSite=Strict` cookies. Refreshing the page restores a valid session without returning its password.
+DBsaur is a local, single-user tool. The browser sends credentials only to the local API through the Nuxt proxy; no third-party services, font CDNs, analytics, or persistent browser credential storage are used. Password fields clear on submission. Unless you opt into saving a connection, credentials stay in bounded server memory, expire after eight hours, and are removed on disconnect or process exit; a periodic cleanup removes expired entries within a minute. Sessions use random opaque IDs in `HttpOnly`, `SameSite=Strict` cookies. Refreshing the page restores a valid session without returning its password.
 
 Browsing uses query validation (plus read-only transactions where supported), statement and lock timeouts, quoted identifiers, bound parameters, and at most 1,000 rows per page. Use a PostgreSQL account with only the necessary privileges; browsing needs `SELECT`, while explicit editing requires corresponding write privileges. Large integers and decimals are returned as strings. JSON and array columns retain their database text representation to preserve nested numeric precision. Sorting uses native database values. Pagination is offset-based: concurrent changes can shift rows, and views without a sortable unique key have no guaranteed stable order. Large cell contents are returned in full; page size is not a response-byte limit.
 
@@ -207,14 +207,14 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting, scope, and dated dep
 
 ## License and responsibility
 
-Original WebDB code and documentation are available under the [MIT license](LICENSE),
+Original DBsaur code and documentation are available under the [MIT license](LICENSE),
 including its warranty disclaimer and limitation of liability. Third-party packages
 and assets retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 The license does not grant trademark rights or imply endorsement by database vendors.
 
 Use only databases you are authorized to access. You control the queries, changes,
 exports, and credentials you submit. Keep backups and verify important results.
-WebDB is provided as is, without guaranteed support, fitness for a particular purpose,
+DBsaur is provided as is, without guaranteed support, fitness for a particular purpose,
 or security or regulatory certification. Installation operators must provide any
 privacy disclosures, legal grounds, retention policies, and access controls required
 for their own deployment. The in-app privacy notice describes software behavior;
