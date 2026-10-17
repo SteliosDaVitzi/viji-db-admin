@@ -1,13 +1,14 @@
-FROM rust:1.95-bookworm AS build
-WORKDIR /app
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
-RUN cargo build --release --locked
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/* && useradd --system --uid 10001 webdb
-RUN install -d -m 0700 -o webdb -g webdb /var/lib/webdb
-COPY --from=build /app/target/release/webdb /usr/local/bin/webdb
-USER webdb
+FROM cgr.dev/chainguard/rust:latest-dev AS build
+WORKDIR /work
+COPY --chown=65532:65532 Cargo.toml Cargo.lock ./
+COPY --chown=65532:65532 src ./src
+USER 65532
+RUN --mount=type=cache,target=/home/nonroot/.cargo/registry,uid=65532,gid=65532 cargo build --release --locked
+RUN mkdir -m 0700 /work/webdb-data
+FROM cgr.dev/chainguard/glibc-dynamic:latest
+COPY --from=build --chown=65532:65532 /work/target/release/webdb /usr/local/bin/webdb
+COPY --from=build --chown=65532:65532 /work/webdb-data /var/lib/webdb
+USER 65532
 ENV WEBDB_BIND=0.0.0.0:34617
 EXPOSE 34617
 CMD ["webdb"]

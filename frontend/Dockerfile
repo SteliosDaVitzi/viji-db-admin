@@ -1,13 +1,14 @@
-FROM node:24-bookworm-slim AS build
+FROM cgr.dev/chainguard/node:latest-dev AS build
 WORKDIR /app
-COPY package*.json ./
+COPY --chown=65532:65532 package*.json ./
+COPY --chown=65532:65532 vendor ./vendor
+USER 65532
 RUN npm ci
-COPY . .
+COPY --chown=65532:65532 . .
 RUN npm run build
-FROM node:24-bookworm-slim
+FROM cgr.dev/chainguard/node:latest
 WORKDIR /app
-COPY --from=build --chown=node:node /app/.output ./.output
-USER node
+COPY --from=build --chown=65532:65532 /app/.output ./.output
 ENV HOST=0.0.0.0 PORT=34616
 EXPOSE 34616
-CMD ["node", ".output/server/index.mjs"]
+CMD [".output/server/index.mjs"]

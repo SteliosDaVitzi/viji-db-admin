@@ -40,48 +40,51 @@ authorization. Session cookies are not an independent login system.
 
 ## Dependency review — 17 October 2026
 
-Results are dated observations, not a security guarantee:
+Live registry and image scans completed on this date reported zero known
+vulnerabilities across the frontend and backend packages and the build and
+deployment images:
 
 | Check | Result |
 | --- | --- |
-| `npm --prefix frontend audit --offline=false --audit-level=low` | FAILED: 11 high-severity findings in the development/build dependency tree |
-| `cargo audit --file backend/Cargo.lock` | Passed; no vulnerabilities or warnings reported; 241 dependencies, 1,329 RustSec advisories loaded |
-| `npm audit --prefix frontend/.output/server --offline=false` | 0 known vulnerabilities after generating the production-server deployment lockfile |
+| `npm audit --offline=false --audit-level=low` | Passed; 0 findings across 607 packages |
+| `cargo audit --file backend/Cargo.lock` | Passed; 0 findings across 241 crate dependencies; 1,334 RustSec advisories loaded |
+| Trivy 0.76.0 on frontend and backend build and deployment images | Passed; 0 findings at every severity, including unknown severity |
 
-The online scan confirms the earlier findings. Two vulnerable transitive packages
-are pulled in by the Nuxt/Nitro development and build toolchain:
+The frontend build tree includes local maintained fixes for two upstream
+advisories that did not have fixed releases at scan time:
 
-- [braces 3.0.3: stack-exhaustion denial of service](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm).
-- [node-forge 1.4.0: RSA signature verification bypass](https://github.com/advisories/GHSA-86w9-cpqp-85rv).
+- [braces](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) is patched in
+  `frontend/vendor/braces` with recursion depth limits and cyclic parent-chain
+  detection.
+- [node-forge](https://github.com/advisories/GHSA-86w9-cpqp-85rv) is patched in
+  `frontend/vendor/node-forge` to reject malformed nested DigestInfo structures.
 
-Both are still the latest published versions as checked on this date; the
-advisories list no patched versions. WebDB does not expose user-controlled glob
-patterns or use Forge signature verification directly. This does not remove the
-findings. Do not force-downgrade Nuxt to the audit suggestion without a separate
-compatibility review. No package versions were changed or advisories suppressed.
+Regression tests cover the vulnerable inputs and valid behavior. The files retain
+the upstream licenses and are documented in `frontend/vendor/README.md`.
 
-An initial sandbox cache-only scan misleadingly returned zero findings; that
-result was discarded after an explicit online scan. The audit command and CI now
-use `--offline=false`. Never accept a production scan of an empty dependency tree:
-the final generated server lockfile resolved 86 packages during installation.
+The Bookworm and Debian 13 base images previously used by the Dockerfiles had
+reported OS and bundled npm advisories. Production and development stages now use
+minimal Chainguard Node 26 and Rust images; the backend runtime uses the minimal
+Chainguard glibc image. The Cargo registry is kept in a BuildKit cache rather than
+in the builder image, so unrelated test lockfiles from downloaded crate sources
+are not retained. All current build and deployment images were scanned without
+ignoring unfixed findings.
 
-CI audits the complete frontend dependency tree and Rust lockfile independently,
-including on a weekly schedule; failures are not ignored. To reproduce:
+CI audits the live npm registry and RustSec database and builds and scans both
+build stages and deployment images. It runs on pushes, pull requests, manual
+dispatch, and daily. Trivy is pinned to version 0.76.0 and its release archive is
+checked against the official SHA-256 before installation. To reproduce the package
+audits:
 
 ```sh
 npm --prefix frontend ci
-cargo install cargo-audit --locked
-npm run audit
+npm --prefix frontend audit --offline=false --audit-level=low
+cargo install cargo-audit --locked --version 0.22.2
+cargo audit --file backend/Cargo.lock
 ```
 
-Generated production-server dependencies can be scanned separately after a build:
-
-```sh
-npm install --prefix frontend/.output/server --package-lock-only --ignore-scripts --offline=false
-npm audit --prefix frontend/.output/server --offline=false
-```
-
-Scans cover known dependency advisories, not application penetration testing,
-all transitive license obligations, browser behavior, or Docker base-image
-vulnerabilities. Scan container images separately before distributing/deploying
-them. Never force incompatible dependency downgrades or hide audit findings.
+Image scans run in `.github/workflows/security.yml` against all severities without
+`--ignore-unfixed`. These results are point-in-time checks for published
+advisories; they cannot detect vulnerabilities that have not been disclosed or
+added to the advisory databases. CI repeats the checks daily. Scans do not replace
+application security review, penetration testing, or license review.

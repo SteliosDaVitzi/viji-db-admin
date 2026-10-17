@@ -19,6 +19,7 @@
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@lezer/highlight": "^1.2.5",
     "@material-symbols/svg-400": "0.48.0",
+    "fill-range": "7.1.1",
     "nuxt": "4.6.1",
     "vue": "3.5.44"
   },
@@ -27,8 +28,12 @@
     "typescript": "~5.9.3",
     "vue-tsc": "3.3.13"
   },
+  "overrides": {
+    "braces": "file:./vendor/braces",
+    "node-forge": "file:./vendor/node-forge"
+  },
   "license": "MIT",
   "engines": {
-    "node": ">=24.11.0 <25"
+    "node": ">=24.11.0 <27"
   }
 }

@@ -1,7 +1,9 @@
 services:
   backend:
-    image: rust:1.95-bookworm
+    image: cgr.dev/chainguard/rust:latest-dev
     working_dir: /app
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
     command: cargo run --locked
     environment:
       WEBDB_BIND: 0.0.0.0:34617
@@ -13,9 +15,11 @@ services:
       - cargo-target:/app/target
       - dev-connections:/var/lib/webdb
   frontend:
-    image: node:24-bookworm-slim
+    image: cgr.dev/chainguard/node:latest-dev
     working_dir: /app
-    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command: npm ci && npm run dev -- --host 0.0.0.0
     environment:
       NUXT_API_BASE: http://backend:34617
       NUXT_TELEMETRY_DISABLED: 1
