@@ -4,7 +4,7 @@ services:
     working_dir: /app
     user: "0:0"
     entrypoint: ["/bin/sh", "-c"]
-    command: cargo run --locked
+    command: ["cargo run --locked"]
     environment:
       WEBDB_BIND: 0.0.0.0:34617
       WEBDB_STORE_PATH: /var/lib/webdb/connections.sqlite
@@ -19,7 +19,7 @@ services:
     working_dir: /app
     user: "0:0"
     entrypoint: ["/bin/sh", "-c"]
-    command: npm ci && npm run dev -- --host 0.0.0.0
+    command: ["npm ci && npm run dev -- --host 0.0.0.0"]
     environment:
       NUXT_API_BASE: http://backend:34617
       NUXT_TELEMETRY_DISABLED: 1
