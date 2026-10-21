@@ -3,6 +3,40 @@ use axum::{body::Body, http::Request};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
+#[test]
+fn geometry_preview_input_is_bounded_hexadecimal() {
+    for value in ["", "0", "010g", "\\x0100", "'); SELECT 1;--"] {
+        assert!(
+            GeometryRequest {
+                value: value.into()
+            }
+            .validate()
+            .is_err()
+        );
+    }
+    assert!(
+        GeometryRequest {
+            value: "abCD0123".into()
+        }
+        .validate()
+        .is_ok()
+    );
+    assert!(
+        GeometryRequest {
+            value: "00".repeat(512 * 1024)
+        }
+        .validate()
+        .is_ok()
+    );
+    assert!(
+        GeometryRequest {
+            value: "00".repeat(512 * 1024 + 1)
+        }
+        .validate()
+        .is_err()
+    );
+}
+
 struct InstanceAdapter;
 #[async_trait::async_trait]
 impl DatabaseAdapter for InstanceAdapter {

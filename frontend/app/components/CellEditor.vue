@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ColumnInfo, Mutation, TableInfo } from '../../shared/database'
+import { isSpatialType } from '../utils/geometry'
 const props = defineProps<{
   column: ColumnInfo
   row: Record<string, unknown>
@@ -21,6 +22,7 @@ const value = ref(
 )
 const mode = ref(original === null ? 'null' : 'value')
 const saving = ref(false)
+const mapOpen = ref(false)
 const error = ref('')
 useActionFeedback(error)
 const contentWidth = ref(340)
@@ -118,6 +120,15 @@ async function save() {
         <label for="cell-value">{{ column.name }}</label
         ><span class="muted">{{ column.dataType }}</span
         ><button
+          v-if="isSpatialType(column.dataType) && typeof original === 'string'"
+          type="button"
+          class="icon-button cell-map-button"
+          title="View on map"
+          aria-label="View on map"
+          @click="mapOpen = true"
+        >
+          <AppIcon name="map" :size="18" /></button
+        ><button
           type="button"
           class="icon-button"
           aria-label="Close value editor"
@@ -170,5 +181,21 @@ async function save() {
         }}
       </p>
     </form>
+    <GeometryMap
+      v-if="mapOpen"
+      :value="String(original)"
+      :column="column.name"
+      @close="mapOpen = false"
+    />
   </dialog>
 </template>
+
+<style scoped>
+.cell-editor-heading .cell-map-button {
+  margin-left: auto;
+  color: var(--accent);
+}
+.cell-editor-heading .cell-map-button + .icon-button {
+  margin-left: 0;
+}
+</style>

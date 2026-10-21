@@ -124,6 +124,10 @@ fn router_with_services(
         .route("/api/connections/{id}/connect", post(connect_saved))
         .route("/api/rows", get(rows))
         .route("/api/query", post(query))
+        .route(
+            "/api/geometry",
+            post(geometry).layer(DefaultBodyLimit::max(2 * 1024 * 1024)),
+        )
         .route("/api/mutations", post(mutate))
         .layer(DefaultBodyLimit::max(16 * 1024))
         .layer(middleware::from_fn(security_headers))
@@ -443,6 +447,35 @@ async fn query(
             .resolve(&input.provider)?
             .query(&input, &query)
             .await?,
+    ))
+}
+
+async fn geometry(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    Json(request): Json<GeometryRequest>,
+) -> AppResult<Json<GeometryPreview>> {
+    let input = state.sessions.get(session_token(&headers))?;
+    request.validate().map_err(invalid)?;
+    let _permit = state
+        .operations
+        .try_acquire()
+        .map_err(|_| AppError(ErrorKind::Busy, "Too many requests. Try again shortly."))?;
+    Ok(Json(
+        tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            state
+                .database
+                .resolve(&input.provider)?
+                .geometry(&input, &request),
+        )
+        .await
+        .map_err(|_| {
+            AppError(
+                ErrorKind::Timeout,
+                "Map preview timed out. Try a smaller geometry.",
+            )
+        })??,
     ))
 }
 

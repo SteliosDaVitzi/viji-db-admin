@@ -50,6 +50,16 @@ To run an individual write test, use the same explicit provider connection varia
 cargo test --manifest-path backend/Cargo.toml --test providers providers::mysql::writes -- --ignored
 ```
 
+## PostGIS map previews
+
+PostgreSQL databases with PostGIS already installed expose a folded-map icon on non-NULL `geometry` and `geography` cells, both in table browsing and SELECT results. Geometry previews are truncated within the normal resizable column width. The cell inspector also offers the map action. Previews are read only and load on demand; the original hexadecimal EWKB value remains available for copying and editing.
+
+The map supports points, lines, polygons, multipart geometries, and collections. Curves are linearized for display. Known SRIDs are transformed to WGS 84 for a 2D preview; extra coordinate dimensions are not visualized. Empty geometries and SRID 0 show an explanation rather than an assumed location. Invalid geometries, unavailable coordinate transformations, and unsupported surface types may fail to preview without affecting table browsing. Individual preview inputs are limited to 1 MiB.
+
+Maps use MapLibre and the bundled VijiTiles Soft Earth style from `maps/vijitiles/web/style.basemap.json`. Vector tiles and fonts load directly from `https://vijimaps.com`; the viewer does not depend on the live style API. Opening a map loads its VijiTiles background; turn off **VijiTiles background** for a plain geometry view. Background requests share your IP address and viewed area with vijimaps.com. Geometry values and record attributes are never sent to the tile service. No extension is installed or database data changed by opening a map. The renderer requires WebGL.
+
+PostGIS integration tests require `WEBDB_TEST_CONNECTION_JSON` pointing to an explicitly disposable database with PostGIS installed: `cargo test --manifest-path backend/Cargo.toml --test postgis -- --ignored`.
+
 ## PostgreSQL editing and schema changes
 
 Browse a PostgreSQL base table and double-click a cell (or press Enter on a focused cell) to edit its value in a compact horizontal dialog. Click **Save value** or press **Ctrl/⌘ + Enter** to save. A single row click selects and highlights it, revealing **Delete row** in the table toolbar. Use **Insert record** above the table to add one. Values use PostgreSQL text input (for example `true`, a UUID, JSON text, or `{1,2}` for an array). NULL, empty text, and omitted fields are distinct. Omitted insert fields use database defaults; generated columns are maintained by PostgreSQL. Inserts, deletes, and schema changes require typing `APPLY` and confirming; individual cell edits use **Save value**. Failed changes preserve the draft.

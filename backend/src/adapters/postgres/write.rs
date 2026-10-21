@@ -218,7 +218,7 @@ pub(super) async fn mutate(
                 .execute(&mut *tx)
                 .await
                 .map_err(write_error)?;
-            let metadata = sqlx::query("SELECT a.attname, pg_catalog.format_type(a.atttypid, NULL) AS cast_type, a.attgenerated::text AS generated, a.attidentity::text AS identity, EXISTS(SELECT 1 FROM pg_catalog.pg_index i WHERE i.indrelid=c.oid AND i.indisprimary AND a.attnum=ANY(i.indkey)) AS primary_key, (SELECT data_type FROM information_schema.columns WHERE table_schema=n.nspname AND table_name=c.relname AND column_name=a.attname) AS data_type FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2 AND c.relkind IN ('r','p') AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum")
+            let metadata = sqlx::query("SELECT a.attname, pg_catalog.format_type(a.atttypid, NULL) AS cast_type, a.attgenerated::text AS generated, a.attidentity::text AS identity, EXISTS(SELECT 1 FROM pg_catalog.pg_index i WHERE i.indrelid=c.oid AND i.indisprimary AND a.attnum=ANY(i.indkey)) AS primary_key, (SELECT CASE WHEN udt_name IN ('geometry', 'geography') THEN udt_name ELSE data_type END FROM information_schema.columns WHERE table_schema=n.nspname AND table_name=c.relname AND column_name=a.attname) AS data_type FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2 AND c.relkind IN ('r','p') AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum")
                 .bind(schema).bind(table).fetch_all(&mut *tx).await.map_err(write_error)?;
             if metadata.is_empty() {
                 return Err(invalid("Choose a base table with accessible columns."));
@@ -261,7 +261,14 @@ pub(super) async fn mutate(
                         let typ: String = r.get("data_type");
                         if matches!(
                             typ.as_str(),
-                            "bigint" | "numeric" | "decimal" | "json" | "jsonb" | "ARRAY"
+                            "bigint"
+                                | "numeric"
+                                | "decimal"
+                                | "json"
+                                | "jsonb"
+                                | "ARRAY"
+                                | "geometry"
+                                | "geography"
                         ) {
                             format!("source.{name}::text AS {name}")
                         } else {

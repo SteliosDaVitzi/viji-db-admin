@@ -3,7 +3,7 @@ export default defineNuxtConfig({
   devtools: { enabled: false },
   telemetry: false,
   devServer: { port: 34616 },
-  css: ['~/assets/main.css'],
+  css: ['maplibre-gl/dist/maplibre-gl.css', '~/assets/main.css'],
   typescript: { strict: true },
   runtimeConfig: { apiBase: 'http://127.0.0.1:34617' },
   routeRules: {

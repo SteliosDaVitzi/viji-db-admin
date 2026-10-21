@@ -33,6 +33,52 @@ async fn session_browsing_validation_and_disconnect() {
         .next()
         .unwrap()
         .to_string();
+    for (token, value, status) in [
+        (
+            "",
+            "010100000000000000000000000000000000000000",
+            StatusCode::UNAUTHORIZED,
+        ),
+        (
+            cookie.as_str(),
+            "'); DROP TABLE places;--",
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            cookie.as_str(),
+            "010100000000000000000000000000000000000000",
+            StatusCode::BAD_REQUEST,
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::post("/api/geometry")
+                    .header("content-type", "application/json")
+                    .header("cookie", token)
+                    .body(Body::from(serde_json::json!({"value":value}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), status);
+        assert_eq!(response.headers()["cache-control"], "no-store");
+    }
+    // Geometry previews have a larger body limit than ordinary API requests.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::post("/api/geometry")
+                .header("content-type", "application/json")
+                .header("cookie", cookie.as_str())
+                .body(Body::from(
+                    serde_json::json!({"value": "00".repeat(16 * 1024)}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST); // Unsupported demo provider, not 413.
     for (token, confirmation, expected) in [
         ("", "APPLY", StatusCode::UNAUTHORIZED),
         (cookie.as_str(), "", StatusCode::BAD_REQUEST),

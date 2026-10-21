@@ -11,6 +11,8 @@ files when redistributing a build, including transitive dependencies.
 | IBM Plex Sans | `@fontsource-variable/ibm-plex-sans` | SIL Open Font License 1.1; Copyright 2019 IBM Corp. |
 | IBM Plex Mono | `@fontsource/ibm-plex-mono` | SIL Open Font License 1.1; Copyright 2017 IBM Corp. |
 | Google Material Symbols SVG icons | `@material-symbols/svg-400` | Apache License 2.0; unmodified icons imported in `AppIcon.vue` |
+| MapLibre map viewer | `maplibre-gl` | BSD 3-Clause; license retained in `frontend/public/licenses/maplibre-gl.txt` |
+| VijiTiles Soft Earth basemap style | `maps/vijitiles/web/style.basemap.json` | Bundled snapshot in `frontend/public/maps/vijitiles.json`; vector tiles and fonts served by vijimaps.com; OpenStreetMap data attribution displayed in the map |
 
 Full asset license texts are retained in [frontend/public/licenses](frontend/public/licenses).
 Keep them with distributed assets. Additional attribution requirements from

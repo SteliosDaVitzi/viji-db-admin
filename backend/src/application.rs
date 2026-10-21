@@ -23,6 +23,15 @@ pub fn invalid(message: &'static str) -> AppError {
 /// Provider boundary: keep browsing read only, bound request cost, and replace
 /// driver details with safe errors. Database privileges remain the security boundary.
 pub trait DatabaseAdapter: Send + Sync {
+    async fn geometry(
+        &self,
+        _input: &ConnectionInput,
+        _request: &GeometryRequest,
+    ) -> AppResult<GeometryPreview> {
+        Err(invalid(
+            "Map previews are available for PostGIS connections.",
+        ))
+    }
     async fn update_settings(
         &self,
         _input: &ConnectionInput,

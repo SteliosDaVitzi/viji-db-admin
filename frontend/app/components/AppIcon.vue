@@ -24,6 +24,7 @@ import fit from '@material-symbols/svg-400/outlined/center_focus_strong.svg?raw'
 import zoomIn from '@material-symbols/svg-400/outlined/zoom_in.svg?raw'
 import zoomOut from '@material-symbols/svg-400/outlined/zoom_out.svg?raw'
 import minus from '@material-symbols/svg-400/outlined/remove.svg?raw'
+import map from '@material-symbols/svg-400/outlined/map.svg?raw'
 
 const props = defineProps<{ name: string; size?: number }>()
 // Unmodified Google Material Symbols from the pinned package; no remote requests.
@@ -53,6 +54,7 @@ const icons: Record<string, string> = {
   zoomIn,
   zoomOut,
   minus,
+  map,
 }
 const paths = computed(() =>
   [...(icons[props.name] || database).matchAll(/<path d="([^"]+)"/g)].map((match) => match[1]),

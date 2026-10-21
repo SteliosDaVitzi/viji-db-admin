@@ -1823,8 +1823,6 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 .data-grid {
-  width: max-content;
-  min-width: 100%;
   table-layout: fixed;
 }
 .data-grid .row-number-column {

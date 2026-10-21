@@ -282,6 +282,31 @@ pub struct TablePage {
     pub page: u32,
     pub page_size: u32,
 }
+
+#[derive(Deserialize)]
+pub struct GeometryRequest {
+    pub value: String,
+}
+impl GeometryRequest {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.value.is_empty()
+            || self.value.len() > 1024 * 1024
+            || !self.value.len().is_multiple_of(2)
+            || !self.value.bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            return Err("Map previews require a PostGIS geometry value of at most 1 MiB.");
+        }
+        Ok(())
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeometryPreview {
+    pub srid: i32,
+    pub empty: bool,
+    pub geojson: Option<Value>,
+}
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowseQuery {

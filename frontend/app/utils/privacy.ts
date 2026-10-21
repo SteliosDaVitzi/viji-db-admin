@@ -1,6 +1,6 @@
 export const privacyConfig = {
   email: 'steliosvitzi@gmail.com',
-  updated: '17 October 2026',
+  updated: '21 October 2026',
   version: 2,
   storageKey: 'webdb.privacy-notice.v1',
   retentionDays: 180,
@@ -48,6 +48,10 @@ export const legalDocuments = {
       [
         'Recipients and international transfers',
         'Requests reach the DBsaur server and your selected database server, together with hosting or network providers needed to deliver them. DBsaur includes no analytics, advertising, tracking pixels, or remote font services. Hosting locations, infrastructure recipients, and any international transfer safeguards depend on the deployment; request those details from its operator before submitting sensitive data.',
+      ],
+      [
+        'Map backgrounds',
+        'PostGIS geometry previews are processed by your selected database and displayed in the browser. Opening a map loads its VijiTiles background using vector tiles and fonts from vijimaps.com, sharing your IP address and the viewed map area with that provider. You can turn off VijiTiles background in the preview. Geometry values, queries, and record attributes are not included in tile requests.',
       ],
       [
         'Your GDPR rights',

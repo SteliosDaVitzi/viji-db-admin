@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TablePage } from '../../shared/database'
+import { isSpatialType } from '../utils/geometry'
 const props = defineProps<{
   data: TablePage
   sort?: string
@@ -16,12 +17,14 @@ const emit = defineEmits<{
 }>()
 const selectedCell = ref<{ row: number; column: string | null } | null>(null)
 const headerId = useId()
+const geometry = ref<{ value: string; column: string } | null>(null)
 const columnWidths = ref<Record<number, number>>({})
 const resize = ref<{ index: number; startX: number; startWidth: number } | null>(null)
 const minimumColumnWidth = 80
 const maximumColumnWidth = 720
 watch([() => props.data, () => props.filter], () => {
   selectedCell.value = null
+  geometry.value = null
 })
 function display(value: unknown) {
   return value === null ? 'NULL' : typeof value === 'object' ? JSON.stringify(value) : String(value)
@@ -77,7 +80,12 @@ function keyResize(event: KeyboardEvent, index: number) {
 </script>
 <template>
   <div class="grid-scroll" tabindex="0" aria-label="Table data, scroll to see more columns">
-    <table class="data-grid">
+    <table
+      class="data-grid"
+      :style="{
+        width: `${58 + data.columns.reduce((total, _, index) => total + (columnWidths[index] ?? 160), 0)}px`,
+      }"
+    >
       <colgroup>
         <col class="row-number-column" />
         <col
@@ -172,7 +180,24 @@ function keyResize(event: KeyboardEvent, index: number) {
               @keydown.enter.prevent="emit('edit', index, column.name)"
             >
               <span
-                v-if="typeof row[column.name] === 'boolean'"
+                v-if="isSpatialType(column.dataType) && typeof row[column.name] === 'string'"
+                class="geometry-cell"
+              >
+                <span class="geometry-cell-preview">{{ display(row[column.name]) }}</span>
+                <button
+                  type="button"
+                  class="icon-button geometry-cell-map"
+                  title="View on map"
+                  :aria-label="`View ${column.name} on map, row ${data.page * data.pageSize + index + 1}`"
+                  @click.stop="geometry = { value: String(row[column.name]), column: column.name }"
+                  @dblclick.stop
+                  @keydown.enter.stop
+                >
+                  <AppIcon name="map" :size="18" />
+                </button>
+              </span>
+              <span
+                v-else-if="typeof row[column.name] === 'boolean'"
                 class="boolean-value"
                 :class="{ truthy: row[column.name] }"
                 ><span class="tiny-dot" />{{ row[column.name] }}</span
@@ -194,4 +219,32 @@ function keyResize(event: KeyboardEvent, index: number) {
       </p>
     </div>
   </div>
+  <GeometryMap
+    v-if="geometry"
+    :value="geometry.value"
+    :column="geometry.column"
+    @close="geometry = null"
+  />
 </template>
+
+<style scoped>
+.geometry-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.geometry-cell-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.geometry-cell-map {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 4px;
+  color: var(--accent);
+}
+</style>

@@ -151,6 +151,34 @@ async fn begin(connection: &mut PgConnection) -> AppResult<sqlx::Transaction<'_,
 
 #[async_trait]
 impl DatabaseAdapter for PostgresAdapter {
+    async fn geometry(
+        &self,
+        input: &ConnectionInput,
+        request: &GeometryRequest,
+    ) -> AppResult<GeometryPreview> {
+        request.validate().map_err(invalid)?;
+        let mut connection = connect(input).await?;
+        let mut tx = begin(&mut connection).await?;
+        // The extension can live outside public. Qualify every PostGIS function/type.
+        let schema: Option<String> = sqlx::query_scalar("SELECT n.nspname::text FROM pg_catalog.pg_extension e JOIN pg_catalog.pg_namespace n ON n.oid=e.extnamespace WHERE e.extname='postgis'")
+            .fetch_optional(&mut *tx).await?;
+        let schema = quote_identifier(
+            &schema.ok_or_else(|| invalid("PostGIS is not installed in this database."))?,
+        );
+        let sql = format!(
+            "SELECT {schema}.ST_SRID(g) AS srid, {schema}.ST_IsEmpty(g) AS empty, CASE WHEN {schema}.ST_SRID(g) > 0 AND NOT {schema}.ST_IsEmpty(g) THEN {schema}.ST_AsGeoJSON({schema}.ST_Transform({schema}.ST_CurveToLine(g), 4326), 9, 0)::jsonb ELSE NULL END AS geojson FROM (SELECT $1::text::{schema}.geometry AS g) value"
+        );
+        let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(&request.value).fetch_one(&mut *tx).await
+            .map_err(|_| invalid("This geometry could not be mapped. Check its validity and coordinate reference system; a 2D map supports points, lines, polygons, and collections."))?;
+        let preview = GeometryPreview {
+            srid: row.get("srid"),
+            empty: row.get("empty"),
+            geojson: row.get("geojson"),
+        };
+        tx.rollback().await?;
+        Ok(preview)
+    }
     fn maintenance_database(&self) -> Option<&'static str> {
         Some("postgres")
     }
@@ -257,8 +285,10 @@ impl DatabaseAdapter for PostgresAdapter {
             let name = quote_identifier(column.name());
             let data_type = column.type_info().name();
             projection.push(
-                if matches!(data_type, "INT8" | "NUMERIC" | "JSON" | "JSONB")
-                    || data_type.ends_with("[]")
+                if matches!(
+                    data_type,
+                    "INT8" | "NUMERIC" | "JSON" | "JSONB" | "geometry" | "geography"
+                ) || data_type.ends_with("[]")
                 {
                     format!("webdb_query.{name}::text AS {name}")
                 } else {
@@ -396,7 +426,7 @@ impl DatabaseAdapter for PostgresAdapter {
         let (page, page_size) = query.bounds().map_err(invalid)?;
         let mut connection = connect(input).await?;
         let mut tx = begin(&mut connection).await?;
-        let metadata = sqlx::query(r#"SELECT c.column_name, c.data_type, c.is_nullable, c.column_default,
+        let metadata = sqlx::query(r#"SELECT c.column_name, CASE WHEN c.udt_name IN ('geometry', 'geography') THEN c.udt_name ELSE c.data_type END AS data_type, c.is_nullable, c.column_default,
           (c.is_generated='ALWAYS' OR COALESCE(c.identity_generation='ALWAYS', false)) AS read_only,
           EXISTS (SELECT 1 FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage k
           ON tc.constraint_catalog=k.constraint_catalog AND tc.constraint_schema=k.constraint_schema AND tc.constraint_name=k.constraint_name
@@ -462,7 +492,14 @@ impl DatabaseAdapter for PostgresAdapter {
                 let name = quote_identifier(&c.name);
                 if matches!(
                     c.data_type.as_str(),
-                    "bigint" | "numeric" | "decimal" | "ARRAY" | "json" | "jsonb"
+                    "bigint"
+                        | "numeric"
+                        | "decimal"
+                        | "ARRAY"
+                        | "json"
+                        | "jsonb"
+                        | "geometry"
+                        | "geography"
                 ) {
                     format!("source.{name}::text AS {name}")
                 } else {
