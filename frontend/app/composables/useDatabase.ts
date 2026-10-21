@@ -41,6 +41,57 @@ export function useDatabase() {
   const activeQuery = ref<string | null>(null)
   let requestVersion = 0
   let controller: AbortController | undefined
+  let activeConnectionKey: string | undefined
+  const activeConnectionStorageKey = 'webdb:active-connection-key'
+
+  function setActiveConnectionKey(key: string | undefined) {
+    activeConnectionKey = key
+    try {
+      if (key) localStorage.setItem(activeConnectionStorageKey, key)
+      else localStorage.removeItem(activeConnectionStorageKey)
+    } catch {
+      /* The session continues to work if the browser blocks local storage. */
+    }
+  }
+
+  function storedDatabase(key: string) {
+    try {
+      return localStorage.getItem(`webdb:last-database:${key}`) || undefined
+    } catch {
+      return undefined
+    }
+  }
+  function rememberDatabase(database: string, key = activeConnectionKey) {
+    if (!key || !database) return
+    try {
+      localStorage.setItem(`webdb:last-database:${key}`, database)
+    } catch {
+      /* Database preference remains in the active session if storage is unavailable. */
+    }
+  }
+  function forgetDatabase(key: string) {
+    try {
+      localStorage.removeItem(`webdb:last-database:${key}`)
+    } catch {
+      /* Nothing else depends on this local preference. */
+    }
+  }
+  async function connectionKey(input: ConnectionInput, savedId?: string) {
+    if (savedId) return `saved:${savedId}`
+    if (input.provider === 'demo' || !globalThis.crypto?.subtle) return undefined
+    const identity = JSON.stringify([
+      input.provider,
+      input.host.trim().toLowerCase(),
+      input.port,
+      input.username,
+    ])
+    try {
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity))
+      return `connection:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`
+    } catch {
+      return undefined
+    }
+  }
 
   function message(cause: unknown, operation?: 'save') {
     const failure = cause as { data?: { message?: string }; statusCode?: number; status?: number }
@@ -178,6 +229,7 @@ export function useDatabase() {
         method: 'POST',
         body: { database },
       })
+      rememberDatabase(database)
       selectedTable.value = table || null
     } catch (cause) {
       error.value = message(cause)
@@ -192,22 +244,47 @@ export function useDatabase() {
       await chooseTable(table)
     else await switchDatabase(database, table)
   }
-  async function connect(input: ConnectionInput | string) {
+  async function connect(input: ConnectionInput | string, savedId?: string) {
     if (testing.value || connecting.value) return false
     connecting.value = true
     connectionError.value = ''
     try {
+      const key = typeof input === 'string' ? `saved:${input}` : await connectionKey(input, savedId)
       session.value =
         typeof input === 'string'
           ? await $fetch<Session>(`/api/connections/${encodeURIComponent(input)}/connect`, {
               method: 'POST',
             })
           : await $fetch<Session>('/api/session', { method: 'POST', body: input })
+      setActiveConnectionKey(key)
       clearWorkspace()
+      if (session.value.allDatabases) {
+        try {
+          databases.value = await $fetch<string[]>('/api/databases')
+          const previous = key ? storedDatabase(key) : undefined
+          const target =
+            (previous && databases.value.includes(previous) ? previous : undefined) ||
+            databases.value.find((database) => database !== session.value?.database)
+          if (target && target !== session.value.database) {
+            session.value = await $fetch<Session>('/api/databases', {
+              method: 'POST',
+              body: { database: target },
+            })
+            rememberDatabase(target, key)
+          }
+        } catch (cause) {
+          error.value = message(cause)
+        }
+      }
       await refreshExplorer()
       if (typeof input !== 'string' && input.saveName) {
         try {
-          await $fetch('/api/connections', { method: 'POST', body: { name: input.saveName } })
+          const saved = await $fetch<{ id: string }>('/api/connections', {
+            method: 'POST',
+            body: { name: input.saveName },
+          })
+          setActiveConnectionKey(`saved:${saved.id}`)
+          if (session.value) rememberDatabase(session.value.database)
           await loadSavedConnections()
           toast.show('Connection saved securely on the server.')
         } catch (cause) {
@@ -248,6 +325,8 @@ export function useDatabase() {
     connectionError.value = ''
     try {
       await $fetch(`/api/connections/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      forgetDatabase(`saved:${id}`)
+      if (activeConnectionKey === `saved:${id}`) setActiveConnectionKey(undefined)
       toast.show('Saved connection removed.')
       await loadSavedConnections()
     } catch (cause) {
@@ -260,6 +339,7 @@ export function useDatabase() {
       ++requestVersion
       controller?.abort()
       session.value = null
+      setActiveConnectionKey(undefined)
       toast.show('Disconnected.')
       databases.value = []
       activeQuery.value = null
@@ -315,6 +395,11 @@ export function useDatabase() {
     }
   }
   onMounted(async () => {
+    try {
+      activeConnectionKey = localStorage.getItem(activeConnectionStorageKey) || undefined
+    } catch {
+      activeConnectionKey = undefined
+    }
     try {
       await loadSavedConnections()
     } catch {

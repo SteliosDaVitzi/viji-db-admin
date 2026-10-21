@@ -7,6 +7,7 @@ const props = defineProps<{
   error: string
   providers: Provider[]
   savedConnections: SavedConnection[]
+  showSavedConnections?: boolean
   savingEnabled: boolean
   testConnection: (input: ConnectionInput) => Promise<{ ok: boolean; elapsedMs: number }>
 }>()
@@ -192,7 +193,7 @@ async function readPem(event: Event, field: 'tlsCa' | 'tlsCert' | 'tlsKey') {
         </div>
       </div>
       <section
-        v-if="savedConnections.length"
+        v-if="showSavedConnections && savedConnections.length"
         class="saved-connections"
         aria-label="Saved connections"
       >

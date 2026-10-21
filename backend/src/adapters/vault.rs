@@ -54,7 +54,7 @@ impl ConnectionRepository for SqliteVault {
             })
             .collect())
     }
-    async fn save(&self, name: &str, input: &ConnectionInput) -> AppResult<()> {
+    async fn save(&self, name: &str, input: &ConnectionInput) -> AppResult<String> {
         let id = uuid::Uuid::new_v4().to_string();
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
         let plaintext = serde_json::to_vec(input).map_err(|_| unavailable())?;
@@ -71,7 +71,7 @@ impl ConnectionRepository for SqliteVault {
         sqlx::query("INSERT INTO saved_connections (id, name, nonce, ciphertext) SELECT ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM saved_connections) < 100")
             .bind(&id).bind(name).bind(&nonce[..]).bind(ciphertext)
             .execute(&self.pool).await.map_err(|_| unavailable())?
-            .rows_affected().eq(&1).then_some(()).ok_or_else(|| invalid("Remove a saved connection before adding more (limit 100)."))
+            .rows_affected().eq(&1).then_some(id).ok_or_else(|| invalid("Remove a saved connection before adding more (limit 100)."))
     }
     async fn load(&self, id: &str) -> AppResult<ConnectionInput> {
         let row = sqlx::query("SELECT nonce, ciphertext FROM saved_connections WHERE id = ?")

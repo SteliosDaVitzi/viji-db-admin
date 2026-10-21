@@ -337,7 +337,7 @@ async fn save_connection(
     State(state): State<Shared>,
     headers: HeaderMap,
     Json(request): Json<SaveConnection>,
-) -> AppResult<StatusCode> {
+) -> AppResult<(StatusCode, Json<serde_json::Value>)> {
     let input = state.sessions.get(session_token(&headers))?;
     let name = request.name.trim();
     if name.is_empty()
@@ -349,8 +349,8 @@ async fn save_connection(
             "Enter a connection name of at most 128 characters for a real database.",
         ));
     }
-    repository(&state)?.save(name, &input).await?;
-    Ok(StatusCode::CREATED)
+    let id = repository(&state)?.save(name, &input).await?;
+    Ok((StatusCode::CREATED, Json(serde_json::json!({ "id": id }))))
 }
 async fn delete_connection(
     State(state): State<Shared>,

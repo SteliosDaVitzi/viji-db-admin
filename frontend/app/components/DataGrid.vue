@@ -16,6 +16,10 @@ const emit = defineEmits<{
 }>()
 const selectedCell = ref<{ row: number; column: string | null } | null>(null)
 const headerId = useId()
+const columnWidths = ref<Record<number, number>>({})
+const resize = ref<{ index: number; startX: number; startWidth: number } | null>(null)
+const minimumColumnWidth = 80
+const maximumColumnWidth = 720
 watch([() => props.data, () => props.filter], () => {
   selectedCell.value = null
 })
@@ -28,10 +32,60 @@ function matches(row: Record<string, unknown>, filter: string) {
     Object.values(row).some((value) => display(value).toLowerCase().includes(filter.toLowerCase()))
   )
 }
+function startResize(event: PointerEvent, index: number) {
+  if (event.button !== 0) return
+  const handle = event.currentTarget as HTMLElement
+  const cell = handle.parentElement
+  if (!cell) return
+  event.preventDefault()
+  event.stopPropagation()
+  handle.setPointerCapture(event.pointerId)
+  resize.value = {
+    index,
+    startX: event.clientX,
+    startWidth: columnWidths.value[index] || cell.getBoundingClientRect().width,
+  }
+}
+function moveResize(event: PointerEvent) {
+  if (!resize.value) return
+  const { index, startX, startWidth } = resize.value
+  columnWidths.value[index] = Math.min(
+    maximumColumnWidth,
+    Math.max(minimumColumnWidth, startWidth + event.clientX - startX),
+  )
+}
+function stopResize() {
+  resize.value = null
+}
+function keyResize(event: KeyboardEvent, index: number) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  event.stopPropagation()
+  const cell = (event.currentTarget as HTMLElement).parentElement
+  const current = columnWidths.value[index] || cell?.getBoundingClientRect().width || 160
+  const step = event.shiftKey ? 48 : 16
+  columnWidths.value[index] =
+    event.key === 'Home'
+      ? minimumColumnWidth
+      : event.key === 'End'
+        ? maximumColumnWidth
+        : Math.min(
+            maximumColumnWidth,
+            Math.max(minimumColumnWidth, current + (event.key === 'ArrowRight' ? step : -step)),
+          )
+}
 </script>
 <template>
   <div class="grid-scroll" tabindex="0" aria-label="Table data, scroll to see more columns">
     <table class="data-grid">
+      <colgroup>
+        <col class="row-number-column" />
+        <col
+          v-for="(column, index) in data.columns"
+          :key="column.name + '-width'"
+          :style="{ width: (columnWidths[index] ?? 160) + 'px' }"
+        />
+      </colgroup>
       <thead>
         <tr>
           <th class="row-number">#</th>
@@ -47,8 +101,10 @@ function matches(row: Record<string, unknown>, filter: string) {
               @click="sortable !== false && emit('sort', column.name)"
             >
               <span class="column-label"
-                ><AppIcon v-if="column.primaryKey" name="key" :size="12" />{{ column.name
-                }}<AppIcon
+                ><AppIcon v-if="column.primaryKey" name="key" :size="12" /><span
+                  class="column-name"
+                  >{{ column.name }}</span
+                ><AppIcon
                   v-if="sort === column.name"
                   name="down"
                   :size="12"
@@ -57,6 +113,23 @@ function matches(row: Record<string, unknown>, filter: string) {
                 column.dataType
               }}</span>
             </button>
+            <span
+              class="column-resizer"
+              role="separator"
+              tabindex="0"
+              aria-orientation="vertical"
+              :aria-label="`Resize ${column.name} column`"
+              :aria-valuemin="minimumColumnWidth"
+              :aria-valuemax="maximumColumnWidth"
+              :aria-valuenow="columnWidths[index] ?? 160"
+              title="Drag to resize. Arrow keys adjust width."
+              @pointerdown="startResize($event, index)"
+              @pointermove="moveResize"
+              @pointerup="stopResize"
+              @pointercancel="stopResize"
+              @lostpointercapture="stopResize"
+              @keydown="keyResize($event, index)"
+            />
           </th>
         </tr>
       </thead>

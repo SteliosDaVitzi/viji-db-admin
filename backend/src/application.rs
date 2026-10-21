@@ -62,7 +62,7 @@ pub trait DatabaseAdapter: Send + Sync {
 /// Installation-wide storage: encrypt credentials at rest and list only labels.
 pub trait ConnectionRepository: Send + Sync {
     async fn list(&self) -> AppResult<Vec<SavedConnection>>;
-    async fn save(&self, name: &str, input: &ConnectionInput) -> AppResult<()>;
+    async fn save(&self, name: &str, input: &ConnectionInput) -> AppResult<String>;
     async fn load(&self, id: &str) -> AppResult<ConnectionInput>;
     async fn delete(&self, id: &str) -> AppResult<()>;
 }

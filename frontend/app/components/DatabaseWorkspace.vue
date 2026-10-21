@@ -348,10 +348,20 @@ watch([data, busy, switching], () => {
   context.value = null
 })
 async function connect(input: ConnectionInput | string) {
-  if (await db.connect(input)) {
+  if (await db.connect(input, typeof input === 'string' ? input : undefined)) {
     explorerKey.value++
     connectionDialog.value?.close()
   }
+}
+const sampleConnection: ConnectionInput = {
+  provider: 'demo',
+  host: '',
+  port: 0,
+  database: '',
+  username: '',
+  password: '',
+  ssl: false,
+  readOnly: true,
 }
 function exportPage() {
   if (!data.value) return
@@ -527,19 +537,16 @@ async function cellSaved() {
         @keydown="sidebar.keydown"
         @dblclick="sidebar.reset"
       />
-      <main v-if="!session" class="welcome-main">
-        <ConnectionForm
-          :providers="providers"
-          :busy="connecting || db.testing.value"
-          :test-connection="db.testConnection"
-          :error="connectionError"
-          :saved-connections="savedConnections"
-          :saving-enabled="savingEnabled"
-          @reconnect="connect"
-          @remove="db.deleteSavedConnection"
-          @connect="connect"
-        />
-      </main>
+      <DatabaseLauncher
+        v-if="!session"
+        :saved-connections="savedConnections"
+        :busy="connecting || db.testing.value"
+        :error="connectionError"
+        @reconnect="connect"
+        @remove="db.deleteSavedConnection"
+        @add="connectionDialog?.showModal()"
+        @sample="connect(sampleConnection)"
+      />
       <main v-else class="database-main">
         <QueryEditor
           :key="queryWorkspaceKey"
@@ -907,6 +914,7 @@ async function cellSaved() {
         :error="connectionError"
         :saved-connections="savedConnections"
         :saving-enabled="savingEnabled"
+        :show-saved-connections="!!session"
         @reconnect="connect"
         @remove="db.deleteSavedConnection"
         @connect="connect"
