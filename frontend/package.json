@@ -18,7 +18,7 @@
     "@fontsource-variable/ibm-plex-sans": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@lezer/highlight": "^1.2.5",
-    "@material-symbols/svg-400": "0.48.0",
+    "@material-symbols/svg-400": "0.48.2",
     "fill-range": "7.1.1",
     "maplibre-gl": "^6.15.0",
     "nuxt": "4.6.1",
