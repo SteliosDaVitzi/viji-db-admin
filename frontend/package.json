@@ -27,7 +27,7 @@
   "devDependencies": {
     "prettier": "3.9.10",
     "typescript": "~5.9.3",
-    "vue-tsc": "3.3.13"
+    "vue-tsc": "3.3.14"
   },
   "overrides": {
     "braces": "file:./vendor/braces",
